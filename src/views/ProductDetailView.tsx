@@ -33,11 +33,11 @@ export const ProductDetailView: React.FC = () => {
   } = useStore();
 
   const productId = navigationState?.productId || 'prod-01';
-  const product = products.find((p) => p.id === productId) || products[0];
+  const product = (products || []).find((p) => p.id === productId) || (products || [])[0];
 
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<string | undefined>(
-    product.variants && product.variants[0] ? product.variants[0].options[0] : undefined
+    product?.variants?.[0]?.options?.[0]
   );
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<'desc' | 'specs' | 'delivery' | 'reviews'>('desc');
@@ -68,11 +68,11 @@ export const ProductDetailView: React.FC = () => {
     ? Math.round(((product.price - product.discountPrice) / product.price) * 100)
     : 0;
 
-  const relatedProducts = products
+  const relatedProducts = (products || [])
     .filter((p) => p.id !== product.id && p.category === product.category)
     .slice(0, 3);
 
-  const productReviews = reviews.filter((r) => r.productId === product.id);
+  const productReviews = (reviews || []).filter((r) => r.productId === product.id);
 
   const handleAddToCart = () => {
     addToCart(product, quantity, selectedVariant);
@@ -180,9 +180,9 @@ export const ProductDetailView: React.FC = () => {
           </div>
 
           {/* Thumbnails list */}
-          {product.images.length > 1 && (
+          {(product.images || []).length > 1 && (
             <div className="flex gap-3 overflow-x-auto pb-2">
-              {product.images.map((img, idx) => (
+              {(product.images || []).map((img, idx) => (
                 <button
                   key={idx}
                   onClick={() => setActiveImageIdx(idx)}
@@ -204,7 +204,7 @@ export const ProductDetailView: React.FC = () => {
           <div>
             <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
               <span className="font-bold text-[#0047AB] uppercase tracking-widest">{product.category}</span>
-              <span className="font-mono text-slate-400">SKU: {product.specifications.sku || 'AJM-STD-100'}</span>
+              <span className="font-mono text-slate-400">SKU: {product.specifications?.sku || 'AJM-STD-100'}</span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#002D72] leading-tight">

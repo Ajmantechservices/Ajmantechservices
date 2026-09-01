@@ -10,8 +10,8 @@ export const BlogView: React.FC = () => {
 
   const filteredPosts =
     selectedCat === 'All'
-      ? blogPosts
-      : blogPosts.filter((p) => p.category.toLowerCase() === selectedCat.toLowerCase());
+      ? (blogPosts || [])
+      : (blogPosts || []).filter((p) => (p.category || '').toLowerCase() === selectedCat.toLowerCase());
 
   return (
     <div id="blog-page-view" className="space-y-12 sm:space-y-16 pb-16">
@@ -52,7 +52,7 @@ export const BlogView: React.FC = () => {
 
         {/* Posts Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredPosts.map((post) => (
+          {(filteredPosts || []).map((post) => (
             <div
               key={post.id}
               onClick={() => navigateTo('blog-detail', { blogId: post.id })}

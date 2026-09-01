@@ -39,16 +39,16 @@ export const ShopView: React.FC = () => {
   // Available tags
   const allTags = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => p.tags.forEach((t) => set.add(t)));
+    (products || []).forEach((p) => (p.tags || []).forEach((t) => set.add(t)));
     return Array.from(set);
   }, [products]);
 
   // Filtered & Sorted Products
   const filteredProducts = useMemo(() => {
-    return products
+    return (products || [])
       .filter((p) => {
         // Category filter
-        if (selectedCategory !== 'All' && p.category.toLowerCase() !== selectedCategory.toLowerCase()) {
+        if (selectedCategory !== 'All' && (p.category || '').toLowerCase() !== selectedCategory.toLowerCase()) {
           return false;
         }
 
@@ -56,35 +56,35 @@ export const ShopView: React.FC = () => {
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           const matches =
-            p.name.toLowerCase().includes(q) ||
-            p.shortDescription.toLowerCase().includes(q) ||
-            p.category.toLowerCase().includes(q) ||
-            p.tags.some((t) => t.toLowerCase().includes(q));
+            (p.name || '').toLowerCase().includes(q) ||
+            (p.shortDescription || '').toLowerCase().includes(q) ||
+            (p.category || '').toLowerCase().includes(q) ||
+            (p.tags || []).some((t) => t.toLowerCase().includes(q));
           if (!matches) return false;
         }
 
         // Price range
-        const actualPrice = p.discountPrice ?? p.price;
+        const actualPrice = p.discountPrice ?? p.price ?? 0;
         if (actualPrice > priceRange) return false;
 
         // Stock filter
-        if (inStockOnly && p.stock <= 0) return false;
+        if (inStockOnly && (p.stock || 0) <= 0) return false;
 
         // Tags filter
         if (selectedTags.length > 0) {
-          const hasTag = selectedTags.some((tag) => p.tags.includes(tag));
+          const hasTag = selectedTags.some((tag) => (p.tags || []).includes(tag));
           if (!hasTag) return false;
         }
 
         return true;
       })
       .sort((a, b) => {
-        const priceA = a.discountPrice ?? a.price;
-        const priceB = b.discountPrice ?? b.price;
+        const priceA = a.discountPrice ?? a.price ?? 0;
+        const priceB = b.discountPrice ?? b.price ?? 0;
 
         if (sortBy === 'price-asc') return priceA - priceB;
         if (sortBy === 'price-desc') return priceB - priceA;
-        if (sortBy === 'rating') return b.rating - a.rating;
+        if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
         if (sortBy === 'newest') return (b.isNewArrival ? 1 : 0) - (a.isNewArrival ? 1 : 0);
         return (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0);
       });
@@ -207,12 +207,12 @@ export const ShopView: React.FC = () => {
                 <span className="text-[11px] opacity-80">{products.length}</span>
               </button>
 
-              {categories.map((cat) => (
+              {(categories || []).map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.name)}
                   className={`w-full text-left px-3.5 py-2 rounded-full text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                    selectedCategory.toLowerCase() === cat.name.toLowerCase()
+                    (selectedCategory || '').toLowerCase() === (cat.name || '').toLowerCase()
                       ? 'bg-[#0047AB] text-white font-bold shadow-xs'
                       : 'text-slate-700 hover:bg-slate-50'
                   }`}
@@ -268,7 +268,7 @@ export const ShopView: React.FC = () => {
               Popular Tags
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {allTags.map((tag) => {
+              {(allTags || []).map((tag) => {
                 const isSelected = selectedTags.includes(tag);
                 return (
                   <button

@@ -19,8 +19,8 @@ export const PortfolioView: React.FC = () => {
 
   const filteredProjects =
     filterCat === 'All'
-      ? projects
-      : projects.filter((p) => p.category.toLowerCase().includes(filterCat.toLowerCase()));
+      ? (projects || [])
+      : (projects || []).filter((p) => (p.category || '').toLowerCase().includes(filterCat.toLowerCase()));
 
   return (
     <div id="portfolio-page-view" className="space-y-12 sm:space-y-16 pb-16">
@@ -60,7 +60,7 @@ export const PortfolioView: React.FC = () => {
 
         {/* Projects Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredProjects.map((proj) => (
+          {(filteredProjects || []).map((proj) => (
             <div
               key={proj.id}
               className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-xl transition-all flex flex-col justify-between group"

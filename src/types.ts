@@ -251,6 +251,23 @@ export interface StoreSettings {
   };
 }
 
+export interface ProductGalleryItem {
+  id: string;
+  productId: string;
+  imageUrl: string;
+  caption?: string;
+  displayOrder?: number;
+  createdAt?: string;
+}
+
+export interface AdminProfile {
+  id: string;
+  email: string;
+  fullName: string;
+  role: 'admin' | 'customer';
+  createdAt?: string;
+}
+
 export type ViewState =
   | 'home'
   | 'shop'
@@ -270,4 +287,7 @@ export type ViewState =
   | 'account'
   | 'track-order'
   | 'wishlist'
-  | 'admin';
+  | 'admin'
+  | 'admin-login'
+  | 'admin-signup'
+  | 'admin-dashboard';

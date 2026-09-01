@@ -59,7 +59,7 @@ export const ServicesView: React.FC = () => {
       {/* Services Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {services.map((srv) => (
+          {(services || []).map((srv) => (
             <div
               key={srv.id}
               className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-xs hover:shadow-xl transition-all flex flex-col justify-between group"
@@ -92,7 +92,7 @@ export const ServicesView: React.FC = () => {
                       Service Inclusions:
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {srv.features.map((feat, idx) => (
+                      {(srv.features || []).map((feat, idx) => (
                         <div key={idx} className="flex items-center gap-2 text-xs text-slate-700">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <span>{feat}</span>

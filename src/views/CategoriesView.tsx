@@ -32,7 +32,7 @@ export const CategoriesView: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {categories.map((cat) => (
+        {(categories || []).map((cat) => (
           <div
             key={cat.id}
             onClick={() => navigateTo('shop', { categorySlug: cat.name })}

@@ -323,7 +323,7 @@ export const CustomerAccountView: React.FC = () => {
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>My Orders ({orders.length})</span>
+            <span>My Orders ({(orders || []).length})</span>
           </button>
 
           <button
@@ -333,7 +333,7 @@ export const CustomerAccountView: React.FC = () => {
             }`}
           >
             <Wrench className="w-4 h-4" />
-            <span>Installation Requests ({serviceRequests.length})</span>
+            <span>Installation Requests ({(serviceRequests || []).length})</span>
           </button>
 
           <button
@@ -351,7 +351,7 @@ export const CustomerAccountView: React.FC = () => {
             className="w-full flex items-center gap-3 px-4 py-3 rounded-full text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
           >
             <Heart className="w-4 h-4 text-rose-500" />
-            <span>My Wishlist ({wishlist.length})</span>
+            <span>My Wishlist ({(wishlist || []).length})</span>
           </button>
         </div>
 
@@ -361,7 +361,7 @@ export const CustomerAccountView: React.FC = () => {
           {activeTab === 'orders' && (
             <div className="space-y-4">
               <h2 className="text-lg font-bold text-[#002D72]">Order History</h2>
-              {orders.length === 0 ? (
+              {(orders || []).length === 0 ? (
                 <div className="bg-white rounded-3xl border border-slate-200/80 p-10 text-center space-y-3">
                   <Package className="w-10 h-10 text-slate-300 mx-auto" />
                   <p className="text-xs text-slate-500 font-light">You have not placed any product orders yet.</p>
@@ -374,7 +374,7 @@ export const CustomerAccountView: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {orders.map((ord) => (
+                  {(orders || []).map((ord) => (
                     <div
                       key={ord.id}
                       className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-4 shadow-xs"
@@ -384,7 +384,7 @@ export const CustomerAccountView: React.FC = () => {
                           <span className="font-mono font-bold text-[#0047AB] bg-[#0047AB]/10 px-2.5 py-0.5 rounded-full">
                             #{ord.orderNumber}
                           </span>
-                          <span className="text-slate-400 font-light">• {new Date(ord.createdAt).toLocaleDateString()}</span>
+                          <span className="text-slate-400 font-light">• {new Date(ord.createdAt || Date.now()).toLocaleDateString()}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span
@@ -398,30 +398,30 @@ export const CustomerAccountView: React.FC = () => {
                           >
                             {ord.status}
                           </span>
-                          <span className="font-bold text-[#002D72] text-sm">{formatNaira(ord.totalAmount)}</span>
+                          <span className="font-bold text-[#002D72] text-sm">{formatNaira(ord.total ?? ord.totalAmount ?? 0)}</span>
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        {ord.items.map((item, idx) => (
+                        {(ord.items || []).map((item, idx) => (
                           <div key={idx} className="flex items-center justify-between text-xs text-slate-700">
                             <div className="flex items-center gap-2 truncate max-w-sm">
                               <img
-                                src={item.productImage}
+                                src={item.productImage || item.image || ''}
                                 alt=""
                                 className="w-8 h-8 rounded-lg object-cover border border-slate-200"
                               />
-                              <span className="truncate font-medium">{item.productName}</span>
+                              <span className="truncate font-medium">{item.productName || item.title || 'Product'}</span>
                               <span className="text-slate-400 font-light">x{item.quantity}</span>
                             </div>
-                            <span className="font-semibold text-slate-900">{formatNaira(item.price * item.quantity)}</span>
+                            <span className="font-semibold text-slate-900">{formatNaira((item.price || 0) * (item.quantity || 1))}</span>
                           </div>
                         ))}
                       </div>
 
                       <div className="pt-2 flex items-center justify-between border-t border-slate-100">
                         <span className="text-[11px] text-slate-500 font-light">
-                          Shipped to: {ord.deliveryAddress.city}, {ord.deliveryAddress.state}
+                          Shipped to: {ord.deliveryAddress?.city || ord.customer?.city || 'Lagos'}, {ord.deliveryAddress?.state || ord.customer?.state || 'Lagos'}
                         </span>
                         <button
                           onClick={() => navigateTo('track-order')}
@@ -450,14 +450,14 @@ export const CustomerAccountView: React.FC = () => {
                 </button>
               </div>
 
-              {serviceRequests.length === 0 ? (
+              {(serviceRequests || []).length === 0 ? (
                 <div className="bg-white rounded-3xl border border-slate-200/80 p-10 text-center space-y-3">
                   <Wrench className="w-10 h-10 text-slate-300 mx-auto" />
                   <p className="text-xs text-slate-500 font-light">You have no active electrical service bookings.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {serviceRequests.map((req) => (
+                  {(serviceRequests || []).map((req) => (
                     <div
                       key={req.id}
                       className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 space-y-3 shadow-xs"

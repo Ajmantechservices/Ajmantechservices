@@ -56,8 +56,8 @@ export const HomeView: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const featuredProducts = products.filter((p) => p.isFeatured).slice(0, 6);
-  const bestSellers = products.filter((p) => p.isBestSeller).slice(0, 6);
+  const featuredProducts = (products || []).filter((p) => p.isFeatured).slice(0, 6);
+  const bestSellers = (products || []).filter((p) => p.isBestSeller).slice(0, 6);
 
   const getCategoryIcon = (iconName: string) => {
     switch (iconName) {
@@ -165,7 +165,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          {categories.map((cat) => (
+          {(categories || []).map((cat) => (
             <div
               key={cat.id}
               onClick={() => navigateTo('shop', { categorySlug: cat.name })}
@@ -420,7 +420,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {services.slice(0, 4).map((srv) => (
+          {(services || []).slice(0, 4).map((srv) => (
             <div
               key={srv.id}
               className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
@@ -492,7 +492,7 @@ export const HomeView: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {projects.slice(0, 3).map((proj) => (
+            {(projects || []).slice(0, 3).map((proj) => (
               <div
                 key={proj.id}
                 onClick={() => navigateTo('portfolio')}
@@ -553,7 +553,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {bestSellers.map((prod) => (
+          {(bestSellers || []).map((prod) => (
             <ProductCard key={prod.id} product={prod} />
           ))}
         </div>
@@ -729,7 +729,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {blogPosts.slice(0, 3).map((post) => (
+          {(blogPosts || []).slice(0, 3).map((post) => (
             <div
               key={post.id}
               onClick={() => navigateTo('blog-detail', { blogId: post.id })}
@@ -790,7 +790,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         <div className="space-y-3">
-          {faqs.slice(0, 6).map((faq) => {
+          {(faqs || []).slice(0, 6).map((faq) => {
             const isOpen = activeFaq === faq.id;
             return (
               <div

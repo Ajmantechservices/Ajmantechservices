@@ -6,7 +6,41 @@
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- 1. CATEGORIES TABLE
+-- 1. PROFILES TABLE (Supabase Auth User Profiles & Role Management)
+create table if not exists public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  email text,
+  full_name text,
+  role text not null default 'customer' check (role in ('customer', 'admin')),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Automatic trigger to create a profile row whenever a new user signs up in auth.users
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, full_name, role)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    coalesce(new.raw_user_meta_data->>'role', 'customer')
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      full_name = coalesce(excluded.full_name, public.profiles.full_name),
+      updated_at = timezone('utc'::text, now());
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- 2. CATEGORIES TABLE
 create table if not exists public.categories (
   id text primary key,
   name text not null,
@@ -17,10 +51,11 @@ create table if not exists public.categories (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. PRODUCTS TABLE
+-- 3. PRODUCTS TABLE
 create table if not exists public.products (
   id text primary key,
   name text not null,
+  slug text,
   category_id text references public.categories(id) on delete set null,
   category_name text not null,
   price numeric not null check (price >= 0),
@@ -46,7 +81,17 @@ create table if not exists public.products (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 3. ORDERS TABLE
+-- 4. PRODUCT GALLERY TABLE (Multiple Image URLs attached to specific product)
+create table if not exists public.product_gallery (
+  id uuid default uuid_generate_v4() primary key,
+  product_id text references public.products(id) on delete cascade,
+  image_url text not null,
+  caption text,
+  display_order integer default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 5. ORDERS TABLE
 create table if not exists public.orders (
   id text primary key,
   order_number text not null unique,
@@ -67,7 +112,7 @@ create table if not exists public.orders (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 4. SERVICE REQUESTS TABLE
+-- 6. SERVICE REQUESTS TABLE
 create table if not exists public.service_requests (
   id text primary key,
   ticket_number text not null unique,
@@ -89,7 +134,7 @@ create table if not exists public.service_requests (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 5. REVIEWS TABLE
+-- 7. REVIEWS TABLE
 create table if not exists public.reviews (
   id text primary key,
   product_id text,
@@ -102,7 +147,7 @@ create table if not exists public.reviews (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 6. STORE SETTINGS TABLE
+-- 8. STORE SETTINGS TABLE
 create table if not exists public.store_settings (
   id text primary key default 'primary_settings',
   store_name text not null default 'AjmanTech Services',
@@ -117,18 +162,25 @@ create table if not exists public.store_settings (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 7. ROW LEVEL SECURITY (RLS) POLICIES
--- Allow public read access to catalog, products, and categories
+-- 9. ROW LEVEL SECURITY (RLS) POLICIES
+alter table public.profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
+alter table public.product_gallery enable row level security;
 alter table public.orders enable row level security;
 alter table public.service_requests enable row level security;
 alter table public.reviews enable row level security;
 alter table public.store_settings enable row level security;
 
--- Public can read products, categories, reviews, settings
+-- Profiles policies
+create policy "Allow users to view own profile" on public.profiles for select using (true);
+create policy "Allow users to update own profile" on public.profiles for update using (true);
+create policy "Allow insert on profiles" on public.profiles for insert with check (true);
+
+-- Public read access
 create policy "Allow public read on categories" on public.categories for select using (true);
 create policy "Allow public read on products" on public.products for select using (true);
+create policy "Allow public read on product_gallery" on public.product_gallery for select using (true);
 create policy "Allow public read on reviews" on public.reviews for select using (true);
 create policy "Allow public read on store_settings" on public.store_settings for select using (true);
 
@@ -142,6 +194,10 @@ create policy "Allow public insert on reviews" on public.reviews for insert with
 -- Allow all modifications for authenticated or full anon key during development
 create policy "Allow all modifications on categories" on public.categories for all using (true) with check (true);
 create policy "Allow all modifications on products" on public.products for all using (true) with check (true);
+create policy "Allow all modifications on product_gallery" on public.product_gallery for all using (true) with check (true);
 create policy "Allow all modifications on orders" on public.orders for all using (true) with check (true);
 create policy "Allow all modifications on service_requests" on public.service_requests for all using (true) with check (true);
 create policy "Allow all modifications on store_settings" on public.store_settings for all using (true) with check (true);
+
+-- Helper query to promote an admin:
+-- UPDATE public.profiles SET role = 'admin' WHERE email = 'your-email@example.com';

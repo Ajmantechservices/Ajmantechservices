@@ -236,11 +236,11 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
   const [settingsFreeThreshold, setSettingsFreeThreshold] = useState(storeSettings.freeDeliveryThreshold);
 
   // Compute Overview KPIs
-  const totalRevenue = orders
-    .filter((o) => o.status !== 'cancelled')
-    .reduce((acc, curr) => acc + curr.totalAmount, 0);
-  const pendingOrdersCount = orders.filter((o) => o.status === 'pending').length;
-  const pendingServicesCount = serviceRequests.filter((s) => s.status === 'pending').length;
+  const totalRevenue = (orders || [])
+    .filter((o) => o?.status !== 'cancelled')
+    .reduce((acc, curr) => acc + (curr?.total || curr?.totalAmount || 0), 0);
+  const pendingOrdersCount = (orders || []).filter((o) => o?.status === 'pending').length;
+  const pendingServicesCount = (serviceRequests || []).filter((s) => s?.status === 'pending').length;
 
   const handleOpenAddProduct = () => {
     setEditingProduct(null);
@@ -350,11 +350,11 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
       p.category.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const filteredOrders = orders.filter(
+  const filteredOrders = (orders || []).filter(
     (o) =>
-      o.orderNumber.toLowerCase().includes(orderSearch.toLowerCase()) ||
-      o.customerName.toLowerCase().includes(orderSearch.toLowerCase()) ||
-      o.customerPhone.includes(orderSearch)
+      (o?.orderNumber || '').toLowerCase().includes(orderSearch.toLowerCase()) ||
+      (o?.customer?.fullName || o?.customerName || '').toLowerCase().includes(orderSearch.toLowerCase()) ||
+      (o?.customer?.phone || o?.customerPhone || '').includes(orderSearch)
   );
 
   return (
@@ -511,14 +511,16 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
               </div>
 
               <div className="divide-y divide-slate-100 text-xs">
-                {orders.slice(0, 4).map((ord) => (
+                {(orders || []).slice(0, 4).map((ord) => (
                   <div key={ord.id} className="py-3 flex items-center justify-between">
                     <div>
                       <div className="font-bold text-slate-900">#{ord.orderNumber}</div>
-                      <div className="text-slate-500">{ord.customerName} • {ord.deliveryAddress.state}</div>
+                      <div className="text-slate-500">
+                        {ord.customerName || ord.customer?.fullName || 'Customer'} • {ord.deliveryAddress?.state || ord.customer?.state || 'Lagos'}
+                      </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-slate-900">{formatNaira(ord.totalAmount)}</div>
+                      <div className="font-bold text-slate-900">{formatNaira(ord.total ?? ord.totalAmount ?? 0)}</div>
                       <span className="text-[10px] font-bold uppercase text-amber-600">{ord.status}</span>
                     </div>
                   </div>
@@ -539,7 +541,7 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
               </div>
 
               <div className="divide-y divide-slate-100 text-xs">
-                {serviceRequests.slice(0, 4).map((req) => (
+                {(serviceRequests || []).slice(0, 4).map((req) => (
                   <div key={req.id} className="py-3 flex items-center justify-between">
                     <div>
                       <div className="font-bold text-slate-900">{req.serviceName}</div>
@@ -547,7 +549,7 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
                     </div>
                     <div className="text-right">
                       <span className="text-[10px] font-bold uppercase text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
-                        {req.status.replace('_', ' ')}
+                        {(req.status || 'pending').replace('_', ' ')}
                       </span>
                     </div>
                   </div>
@@ -597,24 +599,24 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredProducts.map((prod) => (
+                  {(filteredProducts || []).map((prod) => (
                     <tr key={prod.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <img
-                            src={prod.images[0]}
+                            src={prod.images?.[0] || prod.image || ''}
                             alt=""
                             className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0 bg-slate-50"
                           />
                           <div className="min-w-0">
                             <h4 className="font-bold text-slate-900 truncate max-w-xs">{prod.name}</h4>
                             <span className="text-[11px] text-slate-400">
-                              {prod.specifications.wattage} • {prod.specifications.voltage}
+                              {prod.specifications?.wattage || ''} {prod.specifications?.voltage ? `• ${prod.specifications.voltage}` : ''}
                             </span>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-mono font-medium text-slate-600">{prod.sku}</td>
+                      <td className="py-3 px-4 font-mono font-medium text-slate-600">{prod.sku || prod.specifications?.sku || 'AJM-STD'}</td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-semibold">
                           {prod.category}
@@ -701,7 +703,7 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredOrders.map((ord) => (
+                  {(filteredOrders || []).map((ord) => (
                     <tr key={ord.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-blue-700">
                         #{ord.orderNumber}
@@ -710,21 +712,21 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{ord.customerName}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">{ord.customerPhone}</div>
+                        <div className="font-bold text-slate-900">{ord.customer?.fullName || ord.customerName || 'Customer'}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">{ord.customer?.phone || ord.customerPhone || 'N/A'}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-slate-800">{ord.deliveryAddress.city}</div>
-                        <div className="text-[10px] text-slate-400">{ord.deliveryAddress.state}</div>
+                        <div className="text-slate-800">{ord.deliveryAddress?.city || ord.customer?.city || 'Lagos'}</div>
+                        <div className="text-[10px] text-slate-400">{ord.deliveryAddress?.state || ord.customer?.state || 'Lagos'}</div>
                       </td>
                       <td className="py-3 px-4 font-extrabold text-slate-900">
-                        {formatNaira(ord.totalAmount)}
+                        {formatNaira(ord.total || ord.totalAmount || 0)}
                         {ord.installationRequested && (
                           <span className="block text-[10px] text-amber-700 font-semibold">+Installation</span>
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-slate-700 uppercase">{ord.paymentMethod.replace('_', ' ')}</span>
+                        <span className="font-semibold text-slate-700 uppercase">{(ord.paymentMethod || 'bank_transfer').replace('_', ' ')}</span>
                         <span className={`block text-[10px] font-bold ${ord.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
                           ({ord.paymentStatus})
                         </span>
@@ -770,7 +772,7 @@ create policy "Allow all on store_settings" on public.store_settings for all usi
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {serviceRequests.map((req) => (
+                {(serviceRequests || []).map((req) => (
                   <tr key={req.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold text-amber-700">
                       #{req.ticketNumber}

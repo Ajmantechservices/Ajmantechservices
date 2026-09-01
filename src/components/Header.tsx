@@ -14,10 +14,123 @@ import {
   ShieldCheck,
   Wrench,
   ChevronDown,
+  ChevronRight,
   LogOut,
   Package,
+  Zap,
+  Camera,
+  Lightbulb,
+  Sun,
+  SunMedium,
+  Sliders,
+  Activity,
+  ArrowRight,
+  CheckCircle2,
 } from 'lucide-react';
 import { ViewState } from '../types';
+
+export interface CompanyServiceItem {
+  id: string;
+  name: string;
+  shortDesc: string;
+  categoryTag: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accentColor: string;
+  iconBg: string;
+}
+
+export const ALL_COMPANY_SERVICES: CompanyServiceItem[] = [
+  {
+    id: 'srv-electrical-services',
+    name: 'Electrical services',
+    shortDesc: 'Residential & commercial troubleshooting, load balancing & preventative maintenance.',
+    categoryTag: 'Core Electrical',
+    icon: Zap,
+    accentColor: 'text-blue-600',
+    iconBg: 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-cctv-installation',
+    name: 'CCTV installation',
+    shortDesc: 'HD & IP surveillance systems, 360° PTZ smart cameras & mobile live view setup.',
+    categoryTag: 'Surveillance',
+    icon: Camera,
+    accentColor: 'text-indigo-600',
+    iconBg: 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-light-fixture-installation',
+    name: 'Light fixture installation',
+    shortDesc: 'Luxury chandeliers, ceiling flush mounts, magnetic track lights & pendant rigs.',
+    categoryTag: 'Lighting',
+    icon: Lightbulb,
+    accentColor: 'text-amber-600',
+    iconBg: 'bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-outdoor-lighting-installation',
+    name: 'Outdoor lighting installation',
+    shortDesc: 'Weatherproof facade illumination, security floodlights, garden bollards & sconces.',
+    categoryTag: 'Exterior',
+    icon: SunMedium,
+    accentColor: 'text-emerald-600',
+    iconBg: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-electrical-panel-repair',
+    name: 'Electrical panel repair',
+    shortDesc: 'Circuit breaker diagnosis, changeover switch replacement & distribution board overhaul.',
+    categoryTag: 'Repairs & Safety',
+    icon: Sliders,
+    accentColor: 'text-rose-600',
+    iconBg: 'bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-electrical-wiring-installation',
+    name: 'Electrical wiring installation',
+    shortDesc: 'Conduit piping, surface cabling, building phase distribution & certified earthing.',
+    categoryTag: 'Wiring & Piping',
+    icon: Activity,
+    accentColor: 'text-cyan-600',
+    iconBg: 'bg-cyan-50 text-cyan-600 group-hover:bg-cyan-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-general-repairs',
+    name: 'General repairs',
+    shortDesc: 'Rapid response for tripped breakers, burnt sockets, loose terminals & short circuits.',
+    categoryTag: 'Maintenance',
+    icon: Wrench,
+    accentColor: 'text-orange-600',
+    iconBg: 'bg-orange-50 text-orange-600 group-hover:bg-orange-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-security-system-installation',
+    name: 'Security system installation',
+    shortDesc: 'Motion detectors, smart video doorbells, access control keypad & siren systems.',
+    categoryTag: 'Smart Security',
+    icon: ShieldCheck,
+    accentColor: 'text-violet-600',
+    iconBg: 'bg-violet-50 text-violet-600 group-hover:bg-violet-600 group-hover:text-white',
+  },
+  {
+    id: 'srv-solar-installation',
+    name: 'Solar installation',
+    shortDesc: 'Hybrid inverter design, high-capacity lithium storage & rooftop PV panel mounting.',
+    categoryTag: 'Clean Energy',
+    icon: Sun,
+    accentColor: 'text-amber-500',
+    iconBg: 'bg-amber-50 text-amber-500 group-hover:bg-amber-500 group-hover:text-white',
+  },
+  {
+    id: 'srv-switch-and-rope-light-installation',
+    name: 'Switch and rope light installation',
+    shortDesc: 'Smart touch wall switches, dimmer automation, hidden cove LED & neon flex rope runs.',
+    categoryTag: 'Interior Finish',
+    icon: Sparkles,
+    accentColor: 'text-teal-600',
+    iconBg: 'bg-teal-50 text-teal-600 group-hover:bg-teal-600 group-hover:text-white',
+  },
+];
 
 export const Header: React.FC = () => {
   const {
@@ -35,21 +148,44 @@ export const Header: React.FC = () => {
   } = useStore();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileServicesOpen, setIsMobileServicesOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isServicesDropdownOpen, setIsServicesDropdownOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const servicesDropdownRef = useRef<HTMLDivElement>(null);
+  const servicesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Close search suggestions on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchFocused(false);
       }
+      if (
+        servicesDropdownRef.current &&
+        !servicesDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsServicesDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleServicesMouseEnter = () => {
+    if (servicesTimeoutRef.current) {
+      clearTimeout(servicesTimeoutRef.current);
+    }
+    setIsServicesDropdownOpen(true);
+  };
+
+  const handleServicesMouseLeave = () => {
+    servicesTimeoutRef.current = setTimeout(() => {
+      setIsServicesDropdownOpen(false);
+    }, 200);
+  };
 
   // Filter search results
   const searchResults = searchInput.trim()
@@ -82,16 +218,11 @@ export const Header: React.FC = () => {
     }
   };
 
-  const navLinks: { label: string; view: ViewState }[] = [
-    { label: 'Home', view: 'home' },
-    { label: 'Shop', view: 'shop' },
-    { label: 'Categories', view: 'categories' },
-    { label: 'Services', view: 'services' },
-    { label: 'Projects', view: 'portfolio' },
-    { label: 'About Us', view: 'about' },
-    { label: 'Blog', view: 'blog' },
-    { label: 'Contact', view: 'contact' },
-  ];
+  const handleServiceSelect = (serviceName: string) => {
+    setIsServicesDropdownOpen(false);
+    setIsMobileMenuOpen(false);
+    openServiceModal(serviceName);
+  };
 
   return (
     <header id="main-header" className="sticky top-0 z-40 w-full bg-white shadow-xs">
@@ -155,20 +286,182 @@ export const Header: React.FC = () => {
           </div>
 
           {/* Desktop Navigation Links Strip */}
-          <nav className="hidden lg:flex items-center gap-6 xl:gap-8 font-medium text-sm text-slate-600">
-            {navLinks.slice(0, 6).map((link) => (
+          <nav className="hidden lg:flex items-center gap-5 xl:gap-7 font-medium text-sm text-slate-600">
+            <button
+              onClick={() => navigateTo('home')}
+              className={`transition-all relative pb-1 cursor-pointer ${
+                currentView === 'home'
+                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
+                  : 'hover:text-[#0047AB] text-slate-600'
+              }`}
+            >
+              Home
+            </button>
+
+            <button
+              onClick={() => navigateTo('shop')}
+              className={`transition-all relative pb-1 cursor-pointer ${
+                currentView === 'shop'
+                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
+                  : 'hover:text-[#0047AB] text-slate-600'
+              }`}
+            >
+              Shop
+            </button>
+
+            <button
+              onClick={() => navigateTo('categories')}
+              className={`transition-all relative pb-1 cursor-pointer ${
+                currentView === 'categories'
+                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
+                  : 'hover:text-[#0047AB] text-slate-600'
+              }`}
+            >
+              Categories
+            </button>
+
+            {/* OUR SERVICES INTERACTIVE DROPDOWN */}
+            <div
+              ref={servicesDropdownRef}
+              className="relative"
+              onMouseEnter={handleServicesMouseEnter}
+              onMouseLeave={handleServicesMouseLeave}
+            >
               <button
-                key={link.view}
-                onClick={() => navigateTo(link.view)}
-                className={`transition-all relative pb-1 cursor-pointer ${
-                  currentView === link.view
+                id="header-services-menu-btn"
+                onClick={() => {
+                  setIsServicesDropdownOpen(!isServicesDropdownOpen);
+                }}
+                className={`transition-all relative pb-1 cursor-pointer flex items-center gap-1.5 font-medium ${
+                  currentView === 'services' || isServicesDropdownOpen
                     ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
                     : 'hover:text-[#0047AB] text-slate-600'
                 }`}
+                aria-haspopup="true"
+                aria-expanded={isServicesDropdownOpen}
               >
-                {link.label}
+                <span>Our Services</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    isServicesDropdownOpen ? 'rotate-180 text-[#0047AB]' : 'text-slate-400'
+                  }`}
+                />
               </button>
-            ))}
+
+              {/* SERVICES DROPDOWN MEGA-MENU */}
+              {isServicesDropdownOpen && (
+                <div
+                  id="services-dropdown-panel"
+                  className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[720px] bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-5 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                  {/* Dropdown Header */}
+                  <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0047AB] flex items-center justify-center">
+                        <Wrench className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-[#002D72] uppercase tracking-wider">
+                          Our Engineering & Installation Services
+                        </h4>
+                        <p className="text-[11px] text-slate-500 font-normal">
+                          Certified electrical engineers serving Lagos, Abuja, and nationwide
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsServicesDropdownOpen(false);
+                        navigateTo('services');
+                      }}
+                      className="text-xs font-bold text-[#0047AB] hover:text-[#002D72] flex items-center gap-1 group cursor-pointer"
+                    >
+                      <span>View All Services</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </div>
+
+                  {/* 2-Column Multi-Grid for 10 Services */}
+                  <div className="grid grid-cols-2 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
+                    {ALL_COMPANY_SERVICES.map((service) => {
+                      const IconComponent = service.icon;
+                      return (
+                        <div
+                          key={service.id}
+                          onClick={() => handleServiceSelect(service.name)}
+                          className="group relative flex items-start gap-3 p-2.5 rounded-xl hover:bg-blue-50/70 border border-transparent hover:border-blue-100 transition-all cursor-pointer text-left"
+                        >
+                          <div
+                            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200 ${service.iconBg}`}
+                          >
+                            <IconComponent className="w-4 h-4" />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <h5 className="text-xs font-bold text-slate-900 group-hover:text-[#0047AB] transition-colors leading-tight">
+                                {service.name}
+                              </h5>
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 group-hover:bg-white group-hover:text-[#0047AB] transition-colors">
+                                {service.categoryTag}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-light leading-snug mt-0.5 line-clamp-2">
+                              {service.shortDesc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dropdown Bottom Quick-Action CTA Banner */}
+                  <div className="mt-3.5 pt-3 border-t border-slate-100 bg-slate-50/70 -mx-5 -mb-5 p-3.5 rounded-b-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-slate-700">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>COREN & NEMSA standard compliance • Guaranteed workmanship</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setIsServicesDropdownOpen(false);
+                          openServiceModal();
+                        }}
+                        className="px-3.5 py-1.5 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Wrench className="w-3 h-3" />
+                        <span>Book An Electrician</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => navigateTo('portfolio')}
+              className={`transition-all relative pb-1 cursor-pointer ${
+                currentView === 'portfolio'
+                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
+                  : 'hover:text-[#0047AB] text-slate-600'
+              }`}
+            >
+              Projects
+            </button>
+
+            <button
+              onClick={() => navigateTo('about')}
+              className={`transition-all relative pb-1 cursor-pointer ${
+                currentView === 'about'
+                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
+                  : 'hover:text-[#0047AB] text-slate-600'
+              }`}
+            >
+              About Us
+            </button>
+
             <button
               onClick={() => navigateTo('blog')}
               className={`transition-all relative pb-1 cursor-pointer ${
@@ -179,6 +472,7 @@ export const Header: React.FC = () => {
             >
               Blog
             </button>
+
             <button
               onClick={() => navigateTo('contact')}
               className={`transition-all relative pb-1 cursor-pointer ${
@@ -215,13 +509,13 @@ export const Header: React.FC = () => {
                 <div className="absolute top-full left-0 right-0 min-w-[300px] mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-96 overflow-y-auto">
                   {hasSearchResults ? (
                     <>
-                      {searchResults.products.length > 0 && (
+                      {(searchResults?.products || []).length > 0 && (
                         <div className="p-3">
                           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                            Products ({searchResults.products.length})
+                            Products ({(searchResults?.products || []).length})
                           </div>
                           <div className="space-y-1.5">
-                            {searchResults.products.map((prod) => (
+                            {(searchResults?.products || []).map((prod) => (
                               <div
                                 key={prod.id}
                                 onClick={() => {
@@ -231,7 +525,7 @@ export const Header: React.FC = () => {
                                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-blue-50/80 cursor-pointer transition-colors"
                               >
                                 <img
-                                  src={prod.images[0]}
+                                  src={prod.images?.[0] || prod.image || ''}
                                   alt={prod.name}
                                   className="w-10 h-10 rounded-lg object-cover"
                                 />
@@ -249,13 +543,13 @@ export const Header: React.FC = () => {
                         </div>
                       )}
 
-                      {searchResults.services.length > 0 && (
+                      {(searchResults?.services || []).length > 0 && (
                         <div className="p-3 bg-slate-50/60">
                           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                            Electrical Services ({searchResults.services.length})
+                            Electrical Services ({(searchResults?.services || []).length})
                           </div>
                           <div className="space-y-1.5">
-                            {searchResults.services.map((srv) => (
+                            {(searchResults?.services || []).map((srv) => (
                               <div
                                 key={srv.id}
                                 onClick={() => {
@@ -446,24 +740,33 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop Main Navigation Links Strip */}
-      <div className="hidden lg:block bg-slate-50/80 border-t border-slate-100 py-2.5">
+      {/* Desktop Main Sub-Navigation Bar Strip */}
+      <div className="hidden lg:block bg-slate-50/90 border-t border-slate-100 py-2.5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
-          <nav className="flex items-center gap-7 text-xs font-semibold text-slate-700">
-            {navLinks.map((link) => (
-              <button
-                key={link.view}
-                onClick={() => navigateTo(link.view)}
-                className={`transition-colors relative py-1 cursor-pointer ${
-                  currentView === link.view
-                    ? 'text-blue-700 font-bold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-700'
-                    : 'hover:text-blue-700 text-slate-700'
-                }`}
-              >
-                {link.label}
-              </button>
-            ))}
-          </nav>
+          <div className="flex items-center gap-6 text-xs font-semibold text-slate-700">
+            <span className="text-slate-400 font-medium text-[11px] uppercase tracking-wider">
+              Quick Explore:
+            </span>
+            <button
+              onClick={() => navigateTo('shop')}
+              className="hover:text-[#0047AB] transition-colors cursor-pointer"
+            >
+              Lighting & Fixtures
+            </button>
+            <button
+              onClick={() => navigateTo('services')}
+              className="hover:text-[#0047AB] transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Wrench className="w-3.5 h-3.5 text-amber-500" />
+              Installation & Repairs
+            </button>
+            <button
+              onClick={() => navigateTo('portfolio')}
+              className="hover:text-[#0047AB] transition-colors cursor-pointer"
+            >
+              Verified Projects
+            </button>
+          </div>
 
           <div className="flex items-center gap-4 text-xs font-semibold text-slate-600">
             <span className="flex items-center gap-1.5 text-slate-700">
@@ -482,23 +785,148 @@ export const Header: React.FC = () => {
               <div className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">
                 Menu Navigation
               </div>
-              <nav className="flex flex-col space-y-3">
-                {navLinks.map((link) => (
+              <nav className="flex flex-col space-y-1.5">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('home');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'home'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  Home
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('shop');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'shop'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  Shop
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('categories');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'categories'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  Categories
+                </button>
+
+                {/* Mobile Accordion for Services */}
+                <div className="rounded-lg overflow-hidden border border-slate-100">
                   <button
-                    key={link.view}
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      navigateTo(link.view);
-                    }}
-                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                      currentView === link.view
-                        ? 'bg-blue-50 text-blue-700 font-bold'
-                        : 'text-slate-800 hover:bg-slate-50'
-                    }`}
+                    onClick={() => setIsMobileServicesOpen(!isMobileServicesOpen)}
+                    className="w-full flex items-center justify-between text-left text-sm font-semibold py-2 px-3 bg-slate-50 text-slate-900"
                   >
-                    {link.label}
+                    <span className="flex items-center gap-1.5">
+                      <Wrench className="w-4 h-4 text-[#0047AB]" />
+                      Our Services
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-500 transition-transform ${
+                        isMobileServicesOpen ? 'rotate-180' : ''
+                      }`}
+                    />
                   </button>
-                ))}
+
+                  {isMobileServicesOpen && (
+                    <div className="p-2 space-y-1 bg-white border-t border-slate-100 max-h-60 overflow-y-auto">
+                      {ALL_COMPANY_SERVICES.map((srv) => (
+                        <button
+                          key={srv.id}
+                          onClick={() => handleServiceSelect(srv.name)}
+                          className="w-full text-left p-2 rounded-md hover:bg-blue-50 text-xs font-medium text-slate-700 flex items-center justify-between group"
+                        >
+                          <span className="truncate group-hover:text-[#0047AB]">{srv.name}</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0047AB] shrink-0" />
+                        </button>
+                      ))}
+                      <div className="pt-2 border-t border-slate-100">
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            navigateTo('services');
+                          }}
+                          className="w-full text-center py-1.5 text-xs font-bold text-[#0047AB] hover:underline"
+                        >
+                          View Full Services Page &rarr;
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('portfolio');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'portfolio'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  Projects
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('about');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'about'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  About Us
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('blog');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'blog'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  Blog
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    navigateTo('contact');
+                  }}
+                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                    currentView === 'contact'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  Contact
+                </button>
               </nav>
 
               <div className="pt-4 border-t border-slate-100 space-y-2">
@@ -507,7 +935,7 @@ export const Header: React.FC = () => {
                     setIsMobileMenuOpen(false);
                     openServiceModal();
                   }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold text-center flex items-center justify-center gap-2"
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold text-center flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 >
                   <Wrench className="w-4 h-4" />
                   Book An Installation
@@ -526,3 +954,4 @@ export const Header: React.FC = () => {
     </header>
   );
 };
+

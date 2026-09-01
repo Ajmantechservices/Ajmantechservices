@@ -67,7 +67,7 @@ export const QuickViewModal: React.FC = () => {
             <div>
               <div className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-slate-200/80 shadow-inner mb-4">
                 <img
-                  src={quickViewProduct.images[selectedImageIdx] || quickViewProduct.images[0]}
+                  src={(quickViewProduct.images && quickViewProduct.images[selectedImageIdx]) || quickViewProduct.images?.[0] || quickViewProduct.image || ''}
                   alt={quickViewProduct.name}
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover object-center"
@@ -80,9 +80,9 @@ export const QuickViewModal: React.FC = () => {
               </div>
 
               {/* Thumbnails */}
-              {quickViewProduct.images.length > 1 && (
+              {(quickViewProduct.images || []).length > 1 && (
                 <div className="flex gap-2">
-                  {quickViewProduct.images.map((img, idx) => (
+                  {(quickViewProduct.images || []).map((img, idx) => (
                     <button
                       key={idx}
                       onClick={() => setSelectedImageIdx(idx)}
@@ -101,7 +101,7 @@ export const QuickViewModal: React.FC = () => {
               <span className="flex items-center gap-1 text-emerald-600 font-medium">
                 <Check className="w-4 h-4" /> In Stock ({quickViewProduct.stock} available)
               </span>
-              <span>SKU: {quickViewProduct.specifications.sku || 'AJM-STD'}</span>
+              <span>SKU: {quickViewProduct.specifications?.sku || quickViewProduct.sku || 'AJM-STD'}</span>
             </div>
           </div>
 
@@ -143,15 +143,15 @@ export const QuickViewModal: React.FC = () => {
               </p>
 
               {/* Variant Selector */}
-              {quickViewProduct.variants && quickViewProduct.variants.length > 0 && (
+              {(quickViewProduct.variants || []).length > 0 && (
                 <div className="space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  {quickViewProduct.variants.map((v, i) => (
+                  {(quickViewProduct.variants || []).map((v, i) => (
                     <div key={i}>
                       <label className="block text-xs font-bold text-[#002D72] uppercase tracking-wider mb-1.5">
                         {v.name}:
                       </label>
                       <div className="flex flex-wrap gap-2">
-                        {v.options.map((opt) => (
+                        {(v.options || []).map((opt) => (
                           <button
                             key={opt}
                             type="button"

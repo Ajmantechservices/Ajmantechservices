@@ -6,7 +6,10 @@ import { Heart, ShoppingBag, ArrowRight } from 'lucide-react';
 export const WishlistView: React.FC = () => {
   const { wishlist, products, navigateTo, addToCart, formatNaira } = useStore();
 
-  const wishProducts = products.filter((p) => wishlist.includes(p.id));
+  const wishProductIds = new Set(
+    (wishlist || []).map((w: any) => (typeof w === 'string' ? w : w?.productId))
+  );
+  const wishProducts = (products || []).filter((p) => wishProductIds.has(p.id));
 
   return (
     <div id="wishlist-page-view" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">

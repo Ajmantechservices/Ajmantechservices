@@ -81,7 +81,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       {/* Image Gallery Canvas */}
       <div className="relative w-full pt-[80%] bg-slate-100 overflow-hidden">
         <img
-          src={product.images[0]}
+          src={product.images?.[0] || product.image || ''}
           alt={product.name}
           referrerPolicy="no-referrer"
           className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"

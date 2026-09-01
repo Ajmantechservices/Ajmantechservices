@@ -26,7 +26,16 @@ import {
   INITIAL_FAQS,
   INITIAL_STORE_SETTINGS,
 } from '../data/initialData';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  signInAdminWithSupabase,
+  signUpAdminWithSupabase,
+  signOutAdminWithSupabase,
+  fetchProductGallery,
+  addImagesToProductGallery,
+  removeProductGalleryImage,
+} from '../lib/supabase';
 
 
 interface Toast {
@@ -115,19 +124,27 @@ interface StoreContextType {
   login: (emailOrPhone: string, pass: string) => { success: boolean; message: string };
   register: (fullName: string, email: string, phone: string, pass: string) => { success: boolean; message: string };
   logout: () => void;
+  adminLogin: (email: string, pass: string) => Promise<{ success: boolean; message: string; isPrivilegeDenied?: boolean }>;
+  adminSignUp: (fullName: string, email: string, pass: string) => Promise<{ success: boolean; message: string }>;
+  adminLogout: () => Promise<void>;
   updateUserProfile: (updatedUser: Partial<UserAccount>) => void;
   isAdmin: boolean;
   setIsAdmin: (isAdmin: boolean) => void;
 
   // Product Admin Operations
-  addProduct: (product: Omit<Product, 'id'>) => Product;
-  updateProduct: (product: Product) => void;
-  deleteProduct: (id: string) => void;
+  addProduct: (product: Omit<Product, 'id'>) => Promise<Product> | Product;
+  updateProduct: (product: Product) => Promise<void> | void;
+  deleteProduct: (id: string) => Promise<void> | void;
 
   // Category Admin Operations
-  addCategory: (category: Omit<Category, 'id'>) => Category;
-  updateCategory: (category: Category) => void;
-  deleteCategory: (id: string) => void;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<Category> | Category;
+  updateCategory: (category: Category) => Promise<void> | void;
+  deleteCategory: (id: string) => Promise<void> | void;
+
+  // Gallery Operations
+  addGalleryImagesToProduct: (productId: string, imageUrls: string[], caption?: string) => Promise<boolean>;
+  deleteProductGalleryItem: (galleryId: string, productId: string, imageUrl?: string) => Promise<boolean>;
+  refreshCatalog: () => Promise<void>;
 
   // Reviews
   addReview: (reviewData: Omit<Review, 'id' | 'date'>) => void;
@@ -953,6 +970,43 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return { success: true, message: 'Login successful' };
   };
 
+  const adminLogin = async (email: string, pass: string) => {
+    const res = await signInAdminWithSupabase(email, pass);
+    if (res.success && res.role === 'admin') {
+      setIsAdmin(true);
+      const adminUser: UserAccount = {
+        id: res.user?.id || 'usr-admin-01',
+        fullName: res.user?.user_metadata?.full_name || 'AjmanTech Administrator',
+        email: res.user?.email || email,
+        phone: res.user?.phone || '+234 802 345 6789',
+        role: 'admin',
+        addresses: [],
+        createdAt: res.user?.created_at || new Date().toISOString().split('T')[0],
+      };
+      setCurrentUser(adminUser);
+      showToast('Welcome to Admin Portal, Administrator!');
+      return { success: true, message: 'Admin login successful' };
+    } else {
+      setIsAdmin(false);
+      return {
+        success: false,
+        message: res.message || 'Access denied: Administrator privileges required.',
+        isPrivilegeDenied: res.isPrivilegeDenied,
+      };
+    }
+  };
+
+  const adminSignUp = async (fullName: string, email: string, pass: string) => {
+    return await signUpAdminWithSupabase(fullName, email, pass);
+  };
+
+  const adminLogout = async () => {
+    await signOutAdminWithSupabase();
+    setIsAdmin(false);
+    setCurrentUser(null);
+    showToast('Logged out of Admin Portal.', 'info');
+  };
+
   const register = (fullName: string, email: string, phone: string, _pass: string) => {
     const newUser: UserAccount = {
       id: 'usr-' + Date.now(),
@@ -992,45 +1046,278 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // Product CRUD
-  const addProduct = (productData: Omit<Product, 'id'>) => {
+  const addProduct = async (productData: Omit<Product, 'id'>) => {
     const newProduct: Product = {
       ...productData,
       id: 'prod-' + Date.now(),
     };
+
     setProducts((prev) => [newProduct, ...prev]);
+
+    // Direct Supabase sync if connected
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('products').insert({
+          id: newProduct.id,
+          name: newProduct.name,
+          slug: newProduct.slug || newProduct.id,
+          brand: newProduct.brand || 'AjmanTech',
+          category_name: newProduct.category,
+          price: newProduct.price,
+          original_price: newProduct.discountPrice || null,
+          stock: newProduct.stock,
+          rating: newProduct.rating || 5.0,
+          image: newProduct.images[0] || '',
+          gallery: newProduct.images || [],
+          short_description: newProduct.shortDescription || newProduct.name,
+          full_description: newProduct.description || newProduct.shortDescription,
+          specifications: newProduct.specifications || {},
+          tags: newProduct.tags || [],
+          voltage: newProduct.specifications?.voltage || '220V-240V',
+          warranty: newProduct.specifications?.warranty || '1 Year',
+        });
+      } catch (err) {
+        console.warn('Supabase product insert notice:', err);
+      }
+    }
+
     showToast(`Product "${newProduct.name}" added successfully!`);
     return newProduct;
   };
 
-  const updateProduct = (updated: Product) => {
+  const updateProduct = async (updated: Product) => {
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('products').upsert({
+          id: updated.id,
+          name: updated.name,
+          slug: updated.slug || updated.id,
+          brand: updated.brand,
+          category_name: updated.category,
+          price: updated.price,
+          original_price: updated.discountPrice || null,
+          stock: updated.stock,
+          image: updated.images[0] || '',
+          gallery: updated.images,
+          short_description: updated.shortDescription,
+          full_description: updated.description,
+          specifications: updated.specifications,
+          tags: updated.tags,
+          voltage: updated.specifications?.voltage || '220V-240V',
+          warranty: updated.specifications?.warranty || '1 Year',
+        });
+      } catch (err) {
+        console.warn('Supabase product update notice:', err);
+      }
+    }
+
     showToast(`Product "${updated.name}" updated!`);
   };
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('products').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase product delete notice:', err);
+      }
+    }
+
     showToast('Product deleted from inventory.', 'info');
   };
 
   // Category CRUD
-  const addCategory = (catData: Omit<Category, 'id'>) => {
+  const addCategory = async (catData: Omit<Category, 'id'>) => {
     const newCat: Category = {
       ...catData,
-      id: 'cat-' + Date.now(),
+      id: 'cat-' + (catData.slug || Date.now()),
     };
+
     setCategories((prev) => [...prev, newCat]);
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('categories').insert({
+          id: newCat.id,
+          name: newCat.name,
+          slug: newCat.slug,
+          description: newCat.description || '',
+          icon: newCat.image || newCat.iconName,
+          item_count: newCat.productCount || 0,
+        });
+      } catch (err) {
+        console.warn('Supabase category insert notice:', err);
+      }
+    }
+
     showToast(`Category "${newCat.name}" created!`);
     return newCat;
   };
 
-  const updateCategory = (updated: Category) => {
+  const updateCategory = async (updated: Category) => {
     setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('categories').upsert({
+          id: updated.id,
+          name: updated.name,
+          slug: updated.slug,
+          description: updated.description,
+          icon: updated.image || updated.iconName,
+          item_count: updated.productCount,
+        });
+      } catch (err) {
+        console.warn('Supabase category update notice:', err);
+      }
+    }
+
     showToast(`Category "${updated.name}" updated!`);
   };
 
-  const deleteCategory = (id: string) => {
+  const deleteCategory = async (id: string) => {
     setCategories((prev) => prev.filter((c) => c.id !== id));
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('categories').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase category delete notice:', err);
+      }
+    }
+
     showToast('Category deleted.', 'info');
+  };
+
+  // Product Gallery Operations
+  const addGalleryImagesToProduct = async (productId: string, imageUrls: string[], caption?: string) => {
+    const validUrls = imageUrls.map((u) => u.trim()).filter((u) => u.length > 0);
+    if (validUrls.length === 0) return false;
+
+    // 1. Update product images in state
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId) {
+          const currentImages = p.images || [];
+          const updatedImages = Array.from(new Set([...currentImages, ...validUrls]));
+          return {
+            ...p,
+            images: updatedImages,
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. Insert to Supabase product_gallery table & update products.gallery
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await addImagesToProductGallery(productId, validUrls, caption);
+        const prod = products.find((p) => p.id === productId);
+        const allImages = Array.from(new Set([...(prod?.images || []), ...validUrls]));
+        await supabase.from('products').update({ gallery: allImages }).eq('id', productId);
+      } catch (err) {
+        console.warn('Supabase gallery insert notice:', err);
+      }
+    }
+
+    showToast(`Added ${validUrls.length} image(s) to product gallery!`, 'success');
+    return true;
+  };
+
+  const deleteProductGalleryItem = async (galleryId: string, productId: string, imageUrl?: string) => {
+    if (imageUrl) {
+      setProducts((prev) =>
+        prev.map((p) => {
+          if (p.id === productId) {
+            return {
+              ...p,
+              images: p.images.filter((img) => img !== imageUrl),
+            };
+          }
+          return p;
+        })
+      );
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        if (galleryId) {
+          await removeProductGalleryImage(galleryId);
+        }
+        if (imageUrl) {
+          const prod = products.find((p) => p.id === productId);
+          if (prod) {
+            const remaining = prod.images.filter((img) => img !== imageUrl);
+            await supabase.from('products').update({ gallery: remaining }).eq('id', productId);
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase gallery delete notice:', err);
+      }
+    }
+
+    showToast('Gallery image removed.', 'info');
+    return true;
+  };
+
+  const refreshCatalog = async () => {
+    if (!isSupabaseConfigured() || !supabase) return;
+    try {
+      const { data: dbProducts } = await supabase.from('products').select('*');
+      if (dbProducts && dbProducts.length > 0) {
+        const mappedProducts: Product[] = dbProducts.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          slug: p.slug || p.id,
+          brand: p.brand || 'AjmanTech',
+          category: p.category_name,
+          price: Number(p.price),
+          discountPrice: p.original_price ? Number(p.price) : undefined,
+          stock: p.stock ?? 10,
+          rating: p.rating ? Number(p.rating) : 5.0,
+          reviewCount: p.review_count ?? 0,
+          images: Array.isArray(p.gallery) && p.gallery.length > 0 ? p.gallery : [p.image],
+          isFeatured: Boolean(p.is_featured),
+          isBestSeller: Boolean(p.is_best_seller),
+          isNewArrival: Boolean(p.is_new),
+          tags: Array.isArray(p.tags) ? p.tags : ['lighting'],
+          shortDescription: p.short_description || p.name,
+          description: p.full_description || p.short_description || p.name,
+          specifications: {
+            wattage: p.specifications?.wattage || p.voltage || '48W',
+            voltage: p.voltage || '220V - 240V',
+            colorTemperature: p.specifications?.colorTemperature || '3000K - 6500K',
+            warranty: p.warranty || '1 Year',
+            dimensions: p.specifications?.dimensions,
+            material: p.specifications?.material,
+          },
+        }));
+        setProducts(mappedProducts);
+      }
+
+      const { data: dbCats } = await supabase.from('categories').select('*');
+      if (dbCats && dbCats.length > 0) {
+        const mappedCats: Category[] = dbCats.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          description: c.description || '',
+          image: c.icon || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
+          iconName: c.icon || 'Sparkles',
+          productCount: c.item_count ?? 0,
+          isPopular: true,
+        }));
+        setCategories(mappedCats);
+      }
+      showToast('Catalog synchronized with Supabase!', 'success');
+    } catch (e) {
+      console.warn('Catalog refresh error:', e);
+    }
   };
 
   // Reviews
@@ -1138,6 +1425,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         login,
         register,
         logout,
+        adminLogin,
+        adminSignUp,
+        adminLogout,
         updateUserProfile,
         isAdmin,
         setIsAdmin,
@@ -1148,6 +1438,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         addCategory,
         updateCategory,
         deleteCategory,
+
+        addGalleryImagesToProduct,
+        deleteProductGalleryItem,
+        refreshCatalog,
 
         addReview,
         getProductReviews,

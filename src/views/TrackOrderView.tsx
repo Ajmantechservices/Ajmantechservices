@@ -17,18 +17,18 @@ import { OrderStatus } from '../types';
 export const TrackOrderView: React.FC = () => {
   const { orders, formatNaira, openWhatsApp } = useStore();
   const [searchCode, setSearchCode] = useState('');
-  const [searchedOrder, setSearchedOrder] = useState<any>(orders[0] || null);
+  const [searchedOrder, setSearchedOrder] = useState<any>((orders && orders[0]) || null);
   const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setHasSearched(true);
     const clean = searchCode.trim().toUpperCase();
-    const found = orders.find(
+    const found = (orders || []).find(
       (o) =>
-        o.orderNumber.toUpperCase() === clean ||
-        o.customerPhone.includes(clean) ||
-        o.id.toUpperCase() === clean
+        (o.orderNumber && o.orderNumber.toUpperCase() === clean) ||
+        (o.customerPhone && o.customerPhone.includes(clean)) ||
+        (o.id && o.id.toUpperCase() === clean)
     );
     setSearchedOrder(found || null);
   };
@@ -152,10 +152,10 @@ export const TrackOrderView: React.FC = () => {
                 <MapPin className="w-3.5 h-3.5 text-[#0047AB]" /> Delivery Address
               </span>
               <p className="text-slate-700 font-light">
-                {searchedOrder.deliveryAddress.streetAddress}, {searchedOrder.deliveryAddress.city},{' '}
-                {searchedOrder.deliveryAddress.state}
+                {searchedOrder.deliveryAddress?.streetAddress || ''}, {searchedOrder.deliveryAddress?.city || ''},{' '}
+                {searchedOrder.deliveryAddress?.state || ''}
               </p>
-              <p className="text-slate-500 font-mono text-[11px]">Contact: {searchedOrder.customerPhone}</p>
+              <p className="text-slate-500 font-mono text-[11px]">Contact: {searchedOrder.customerPhone || 'N/A'}</p>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
@@ -163,10 +163,10 @@ export const TrackOrderView: React.FC = () => {
                 <Truck className="w-3.5 h-3.5 text-emerald-600" /> Courier & Payment
               </span>
               <p className="text-slate-700 font-light">
-                Method: <strong className="uppercase">{searchedOrder.paymentMethod.replace('_', ' ')}</strong> ({searchedOrder.paymentStatus})
+                Method: <strong className="uppercase">{(searchedOrder.paymentMethod || 'bank_transfer').replace('_', ' ')}</strong> ({searchedOrder.paymentStatus || 'pending'})
               </p>
               <p className="text-slate-700 font-bold text-[#0047AB]">
-                Total Amount: {formatNaira(searchedOrder.totalAmount)}
+                Total Amount: {formatNaira(searchedOrder.total ?? searchedOrder.totalAmount ?? 0)}
               </p>
             </div>
           </div>
@@ -177,20 +177,20 @@ export const TrackOrderView: React.FC = () => {
               Package Contents
             </h4>
             <div className="space-y-2">
-              {searchedOrder.items.map((item: any, i: number) => (
+              {(searchedOrder.items || []).map((item: any, i: number) => (
                 <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 text-xs border border-slate-100">
                   <div className="flex items-center gap-3">
                     <img
-                      src={item.productImage}
+                      src={item.productImage || item.image || ''}
                       alt=""
                       className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-white"
                     />
                     <div>
-                      <h5 className="font-semibold text-slate-900">{item.productName}</h5>
+                      <h5 className="font-semibold text-slate-900">{item.productName || item.name}</h5>
                       <span className="text-[11px] text-slate-500 font-light">Qty: {item.quantity}</span>
                     </div>
                   </div>
-                  <div className="font-bold text-[#002D72]">{formatNaira(item.price * item.quantity)}</div>
+                  <div className="font-bold text-[#002D72]">{formatNaira((item.price || 0) * (item.quantity || 1))}</div>
                 </div>
               ))}
             </div>
