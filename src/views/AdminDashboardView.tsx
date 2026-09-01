@@ -19,8 +19,17 @@ import {
   Sparkles,
   Layers,
   Eye,
+  Database,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldAlert,
+  Server,
+  RefreshCw,
 } from 'lucide-react';
 import { Product, OrderStatus, ServiceRequestStatus, ProductCategory } from '../types';
+import { isSupabaseConfigured, getSupabaseConfigStatus, testSupabaseConnection } from '../lib/supabase';
+
 
 export const AdminDashboardView: React.FC = () => {
   const {
@@ -40,7 +49,163 @@ export const AdminDashboardView: React.FC = () => {
     navigateTo,
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'services' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'services' | 'settings' | 'supabase'>('overview');
+
+  // Supabase Status & Tester State
+  const [supabaseTestStatus, setSupabaseTestStatus] = useState<{ testing: boolean; result?: { success: boolean; message: string } }>({
+    testing: false,
+  });
+  const [copiedSql, setCopiedSql] = useState(false);
+  const supabaseConfig = getSupabaseConfigStatus();
+
+  const handleTestSupabase = async () => {
+    setSupabaseTestStatus({ testing: true });
+    const res = await testSupabaseConnection();
+    setSupabaseTestStatus({ testing: false, result: res });
+    if (res.success) {
+      showToast('Supabase connection verified!', 'success');
+    } else {
+      showToast('Supabase connection check failed: ' + res.message, 'error');
+    }
+  };
+
+  const fullSqlSchema = `-- Run this in Supabase SQL Editor (supabase.com -> SQL Editor -> New Query)
+create extension if not exists "uuid-ossp";
+
+-- Categories
+create table if not exists public.categories (
+  id text primary key,
+  name text not null,
+  slug text not null unique,
+  description text,
+  icon text,
+  item_count integer default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Products
+create table if not exists public.products (
+  id text primary key,
+  name text not null,
+  category_id text references public.categories(id) on delete set null,
+  category_name text not null,
+  price numeric not null check (price >= 0),
+  original_price numeric,
+  rating numeric default 5.0,
+  review_count integer default 0,
+  stock integer default 10,
+  brand text default 'Generic',
+  is_featured boolean default false,
+  is_best_seller boolean default false,
+  is_new boolean default false,
+  is_energy_saving boolean default false,
+  voltage text default '220V-240V',
+  warranty text default '1 Year',
+  image text not null,
+  gallery jsonb default '[]'::jsonb,
+  short_description text not null,
+  full_description text not null,
+  specifications jsonb default '{}'::jsonb,
+  features jsonb default '[]'::jsonb,
+  variants jsonb default '[]'::jsonb,
+  tags jsonb default '[]'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Orders
+create table if not exists public.orders (
+  id text primary key,
+  order_number text not null unique,
+  customer_name text not null,
+  customer_email text not null,
+  customer_phone text not null,
+  items jsonb not null default '[]'::jsonb,
+  total_amount numeric not null,
+  delivery_fee numeric default 0,
+  installation_fee numeric default 0,
+  status text not null default 'pending',
+  payment_method text not null default 'bank_transfer',
+  payment_status text not null default 'pending',
+  delivery_address jsonb not null default '{}'::jsonb,
+  delivery_notes text,
+  tracking_history jsonb default '[]'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Service Requests
+create table if not exists public.service_requests (
+  id text primary key,
+  ticket_number text not null unique,
+  customer_name text not null,
+  customer_phone text not null,
+  customer_email text not null,
+  service_type text not null,
+  service_name text not null,
+  service_tier text,
+  description text not null,
+  location jsonb not null default '{}'::jsonb,
+  preferred_date text,
+  preferred_time text,
+  is_emergency boolean default false,
+  status text not null default 'submitted',
+  assigned_technician text,
+  admin_notes text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Reviews
+create table if not exists public.reviews (
+  id text primary key,
+  product_id text,
+  customer_name text not null,
+  rating integer not null check (rating >= 1 and rating <= 5),
+  date text not null,
+  comment text not null,
+  verified_purchase boolean default true,
+  helpful_count integer default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Store Settings
+create table if not exists public.store_settings (
+  id text primary key default 'primary_settings',
+  store_name text not null default 'AjmanTech Services',
+  phone_number text not null default '+234 802 345 6789',
+  whatsapp_number text not null default '2348023456789',
+  email text not null default 'support@ajmantech.ng',
+  address text not null default 'Plot 14 Admiralty Way, Lekki Phase 1, Lagos, Nigeria',
+  delivery_fee_lagos numeric default 2500,
+  delivery_fee_other_states numeric default 6000,
+  free_delivery_threshold numeric default 50000,
+  bank_details jsonb not null default '{"bankName": "Guaranty Trust Bank (GTBank)", "accountNumber": "0123456789", "accountName": "AjmanTech Electrical Services Ltd"}'::jsonb,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable RLS & Add Public Policies
+alter table public.categories enable row level security;
+alter table public.products enable row level security;
+alter table public.orders enable row level security;
+alter table public.service_requests enable row level security;
+alter table public.reviews enable row level security;
+alter table public.store_settings enable row level security;
+
+create policy "Allow all on categories" on public.categories for all using (true) with check (true);
+create policy "Allow all on products" on public.products for all using (true) with check (true);
+create policy "Allow all on orders" on public.orders for all using (true) with check (true);
+create policy "Allow all on service_requests" on public.service_requests for all using (true) with check (true);
+create policy "Allow all on reviews" on public.reviews for all using (true) with check (true);
+create policy "Allow all on store_settings" on public.store_settings for all using (true) with check (true);
+`;
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(fullSqlSchema);
+    setCopiedSql(true);
+    showToast('SQL Migration Schema copied to clipboard!', 'success');
+    setTimeout(() => setCopiedSql(false), 3000);
+  };
+
 
   // Search & Filter in Tables
   const [productSearch, setProductSearch] = useState('');
@@ -271,7 +436,23 @@ export const AdminDashboardView: React.FC = () => {
         >
           Store Settings
         </button>
+
+        <button
+          onClick={() => setActiveTab('supabase')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 ${
+            activeTab === 'supabase' ? 'bg-emerald-700 text-white shadow-xs' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5 text-emerald-500" />
+          <span>Supabase & Cloud DB</span>
+          {supabaseConfig.isConfigured ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+          )}
+        </button>
       </div>
+
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
@@ -713,6 +894,150 @@ export const AdminDashboardView: React.FC = () => {
           </form>
         </div>
       )}
+
+      {/* TAB 6: SUPABASE & CLOUD DB */}
+      {activeTab === 'supabase' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+          {/* Header Card */}
+          <div className="bg-linear-to-r from-emerald-900 to-[#002D72] rounded-3xl p-6 sm:p-8 text-white space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/20 text-emerald-300 text-xs font-bold border border-emerald-400/30">
+                  <Database className="w-3.5 h-3.5" />
+                  Supabase PostgreSQL Backend Integration
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black">Vercel & Supabase Cloud Connection</h2>
+                <p className="text-xs text-blue-100/80 max-w-2xl font-light">
+                  Your AjmanTech store is configured to synchronize live orders, customer service requests, product catalog, and reviews directly with your Supabase PostgreSQL database deployed on Vercel.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold">Live Connection:</span>
+                  {supabaseConfig.isConfigured ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-400/40">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Configured
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-400/40">
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                      Pending Keys
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleTestSupabase}
+                  disabled={supabaseTestStatus.testing}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors flex items-center gap-2 border border-white/20 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${supabaseTestStatus.testing ? 'animate-spin' : ''}`} />
+                  {supabaseTestStatus.testing ? 'Testing...' : 'Test Connection'}
+                </button>
+              </div>
+            </div>
+
+            {/* Test Result Banner */}
+            {supabaseTestStatus.result && (
+              <div
+                className={`p-3.5 rounded-2xl text-xs font-medium border flex items-start gap-2.5 ${
+                  supabaseTestStatus.result.success
+                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
+                    : 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                }`}
+              >
+                {supabaseTestStatus.result.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                ) : (
+                  <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <p className="font-bold">{supabaseTestStatus.result.success ? 'Success' : 'Notice'}</p>
+                  <p className="text-[11px] opacity-90">{supabaseTestStatus.result.message}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Setup 3-Step Guide */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-3 shadow-xs">
+              <div className="w-8 h-8 rounded-full bg-blue-100 text-[#002D72] flex items-center justify-center font-bold text-sm">
+                1
+              </div>
+              <h3 className="font-extrabold text-slate-900 text-sm">Run Schema in Supabase</h3>
+              <p className="text-xs text-slate-600 font-light leading-relaxed">
+                Log into <strong>supabase.com</strong>, select your project, click on <strong>SQL Editor</strong> in the left sidebar, paste the migration SQL schema, and click <strong>Run</strong>.
+              </p>
+              <button
+                onClick={handleCopySql}
+                className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {copiedSql ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-600" />}
+                <span>{copiedSql ? 'Schema Copied!' : 'Copy SQL Schema'}</span>
+              </button>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-3 shadow-xs">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
+                2
+              </div>
+              <h3 className="font-extrabold text-slate-900 text-sm">Get Project API Credentials</h3>
+              <p className="text-xs text-slate-600 font-light leading-relaxed">
+                In your Supabase project dashboard, go to <strong>Project Settings → API</strong>. Copy your <strong>Project URL</strong> and your <strong>anon / public API key</strong>.
+              </p>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 font-mono text-[10px] text-slate-700 space-y-1">
+                <div>URL: https://xyz.supabase.co</div>
+                <div>Anon Key: eyJhbGciOi...</div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-3 shadow-xs">
+              <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-sm">
+                3
+              </div>
+              <h3 className="font-extrabold text-slate-900 text-sm">Add Variables in Vercel</h3>
+              <p className="text-xs text-slate-600 font-light leading-relaxed">
+                In <strong>vercel.com</strong>, open your project → <strong>Settings → Environment Variables</strong>. Add the two variables below and trigger a <strong>Redeploy</strong>.
+              </p>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 font-mono text-[10px] text-purple-700 font-bold space-y-1">
+                <div>VITE_SUPABASE_URL</div>
+                <div>VITE_SUPABASE_ANON_KEY</div>
+              </div>
+            </div>
+          </div>
+
+          {/* SQL Editor Code Block */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <Server className="w-5 h-5 text-blue-700" />
+                  Supabase PostgreSQL Migration Script (supabase/schema.sql)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Creates tables: <code className="text-blue-700 font-semibold">products</code>, <code className="text-blue-700 font-semibold">categories</code>, <code className="text-blue-700 font-semibold">orders</code>, <code className="text-blue-700 font-semibold">service_requests</code>, <code className="text-blue-700 font-semibold">reviews</code>, <code className="text-blue-700 font-semibold">store_settings</code> with Row Level Security (RLS).
+                </p>
+              </div>
+
+              <button
+                onClick={handleCopySql}
+                className="py-2.5 px-5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs shadow-md transition-colors flex items-center gap-2 self-start sm:self-auto cursor-pointer"
+              >
+                {copiedSql ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedSql ? 'Copied to Clipboard!' : 'Copy SQL Migration'}</span>
+              </button>
+            </div>
+
+            <div className="relative rounded-2xl bg-slate-900 text-slate-100 p-4 font-mono text-xs overflow-x-auto max-h-72">
+              <pre>{fullSqlSchema}</pre>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Product Add / Edit Modal */}
       {showProductModal && (

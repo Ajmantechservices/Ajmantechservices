@@ -105,7 +105,7 @@ export const HomeView: React.FC = () => {
                 onClick={() => navigateTo('shop')}
                 className="bg-white text-[#002D72] hover:bg-slate-100 px-8 py-3.5 rounded-full font-bold text-sm shadow-xl transition-all cursor-pointer flex items-center gap-2"
               >
-                <span>Browse Collection</span>
+                <span>Shop Now</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
               <button

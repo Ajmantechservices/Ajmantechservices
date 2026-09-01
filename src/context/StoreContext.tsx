@@ -26,6 +26,8 @@ import {
   INITIAL_FAQS,
   INITIAL_STORE_SETTINGS,
 } from '../data/initialData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
 
 interface Toast {
   id: string;
@@ -429,6 +431,134 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch (e) { console.error(e); }
   }, [isAdmin]);
 
+  // Initial Supabase Sync when environment variables are configured
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !supabase) return;
+
+    const fetchSupabaseData = async () => {
+      try {
+        // 1. Fetch products
+        const { data: dbProducts, error: prodErr } = await supabase.from('products').select('*');
+        if (!prodErr && dbProducts && dbProducts.length > 0) {
+          const mappedProducts: Product[] = dbProducts.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug || p.id,
+            brand: p.brand || 'AjmanTech',
+            category: p.category_name,
+            price: Number(p.price),
+            discountPrice: p.original_price ? Number(p.price) : undefined,
+            stock: p.stock ?? 10,
+            rating: p.rating ? Number(p.rating) : 5.0,
+            reviewCount: p.review_count ?? 0,
+            images: Array.isArray(p.gallery) && p.gallery.length > 0 ? p.gallery : [p.image],
+            isFeatured: Boolean(p.is_featured),
+            isBestSeller: Boolean(p.is_best_seller),
+            isNewArrival: Boolean(p.is_new),
+            tags: Array.isArray(p.tags) ? p.tags : ['lighting'],
+            shortDescription: p.short_description || p.name,
+            description: p.full_description || p.short_description || p.name,
+            specifications: {
+              wattage: p.specifications?.wattage || p.voltage || '48W',
+              voltage: p.voltage || '220V - 240V',
+              colorTemperature: p.specifications?.colorTemperature || '3000K - 6500K',
+              warranty: p.warranty || '1 Year',
+              dimensions: p.specifications?.dimensions,
+              material: p.specifications?.material,
+            },
+          }));
+          setProducts(mappedProducts);
+        }
+
+        // 2. Fetch categories
+        const { data: dbCats, error: catErr } = await supabase.from('categories').select('*');
+        if (!catErr && dbCats && dbCats.length > 0) {
+          const mappedCats: Category[] = dbCats.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            description: c.description || '',
+            image: c.icon || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
+            iconName: c.icon || 'Sparkles',
+            productCount: c.item_count ?? 0,
+            isPopular: true,
+          }));
+          setCategories(mappedCats);
+        }
+
+        // 3. Fetch Orders
+        const { data: dbOrders, error: ordErr } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!ordErr && dbOrders && dbOrders.length > 0) {
+          const mappedOrders: Order[] = dbOrders.map((o: any) => ({
+            id: o.id,
+            orderNumber: o.order_number,
+            items: o.items || [],
+            customer: {
+              fullName: o.customer_name || 'Valued Customer',
+              email: o.customer_email || '',
+              phone: o.customer_phone || '',
+              address: o.delivery_address?.address || '',
+              state: o.delivery_address?.state || 'Lagos',
+              city: o.delivery_address?.city || 'Lagos',
+              notes: o.delivery_notes || '',
+            },
+            subtotal: Number(o.total_amount || 0) - Number(o.delivery_fee || 0),
+            deliveryFee: Number(o.delivery_fee || 0),
+            discountAmount: 0,
+            total: Number(o.total_amount || 0),
+            paymentMethod: o.payment_method || 'bank_transfer',
+            paymentStatus: o.payment_status || 'pending',
+            status: o.status || 'placed',
+            trackingHistory: o.tracking_history || [],
+            createdAt: o.created_at || new Date().toISOString().split('T')[0],
+            estimatedDelivery: '24-48 Hours from Dispatch',
+            includesInstallation: Boolean(o.installation_fee && o.installation_fee > 0),
+            installationFee: o.installation_fee ? Number(o.installation_fee) : 0,
+          }));
+
+          setOrders(mappedOrders);
+        }
+
+        // 4. Fetch Service Requests
+        const { data: dbServices, error: srvErr } = await supabase
+          .from('service_requests')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!srvErr && dbServices && dbServices.length > 0) {
+          const mappedServices: ServiceRequest[] = dbServices.map((s: any) => ({
+            id: s.id,
+            ticketNumber: s.ticket_number,
+            serviceId: s.service_type || 'srv-electrical',
+            serviceName: s.service_name || 'Electrical Installation',
+            customerName: s.customer_name || 'Customer',
+            email: s.customer_email || '',
+            phone: s.customer_phone || '',
+            state: s.location?.state || 'Lagos',
+            city: s.location?.city || 'Lagos',
+            address: s.location?.address || '',
+            preferredDate: s.preferred_date || '',
+            preferredTimeSlot: s.preferred_time || 'Morning',
+            description: s.description || '',
+            status: s.status || 'new',
+            assignedTechnician: s.assigned_technician,
+            internalNotes: s.admin_notes,
+            createdAt: s.created_at || new Date().toISOString().split('T')[0],
+          }));
+          setServiceRequests(mappedServices);
+        }
+
+      } catch (err) {
+        console.warn('Supabase initial fetch notice:', err);
+      }
+    };
+
+    fetchSupabaseData();
+  }, []);
+
+
   // Scroll to top on view change
   const navigateTo = (
     view: ViewState,
@@ -608,10 +738,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     clearCart();
     setActiveOrderForSuccess(newOrder);
     showToast(`Order ${orderNumber} placed successfully!`, 'success');
+
+    // Async Supabase Sync
+    if (isSupabaseConfigured() && supabase) {
+      supabase
+        .from('orders')
+        .insert({
+          id: newOrder.id,
+          order_number: newOrder.orderNumber,
+          customer_name: newOrder.customer.fullName,
+          customer_email: newOrder.customer.email,
+          customer_phone: newOrder.customer.phone,
+          items: newOrder.items,
+          total_amount: newOrder.total,
+          delivery_fee: newOrder.deliveryFee,
+          payment_method: newOrder.paymentMethod,
+          payment_status: newOrder.paymentStatus,
+          delivery_address: {
+            address: newOrder.customer.address,
+            state: newOrder.customer.state,
+            city: newOrder.customer.city,
+          },
+          delivery_notes: newOrder.customer.notes,
+          status: newOrder.status,
+          tracking_history: newOrder.trackingHistory,
+        })
+        .then(({ error }) => {
+          if (error) console.error('Supabase order insert error:', error);
+        });
+    }
+
     return newOrder;
   };
 
+
   const updateOrderStatus = (orderId: string, status: OrderStatus, note?: string) => {
+    let updatedOrder: Order | undefined;
     setOrders((prev) =>
       prev.map((order) => {
         if (order.id === orderId) {
@@ -628,16 +790,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return step;
           });
 
-          return {
+          updatedOrder = {
             ...order,
             status,
             trackingHistory: updatedHistory,
           };
+          return updatedOrder;
         }
         return order;
       })
     );
     showToast(`Order status updated to "${status.replace(/_/g, ' ').toUpperCase()}"`);
+
+    // Async Supabase Sync
+    if (isSupabaseConfigured() && supabase) {
+      supabase
+        .from('orders')
+        .update({
+          status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .then(({ error }) => {
+          if (error) console.error('Supabase order update error:', error);
+        });
+    }
   };
 
   const getOrderByIdOrNumber = (identifier: string) => {
@@ -663,8 +840,38 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     setServiceRequests((prev) => [newRequest, ...prev]);
     showToast(`Service Request ${ticketNumber} logged! AjmanTech team will call you.`);
+
+    // Async Supabase Sync
+    if (isSupabaseConfigured() && supabase) {
+      supabase
+        .from('service_requests')
+        .insert({
+          id: newRequest.id,
+          ticket_number: newRequest.ticketNumber,
+          customer_name: newRequest.customerName,
+          customer_phone: newRequest.phone,
+          customer_email: newRequest.email,
+          service_type: newRequest.serviceId,
+          service_name: newRequest.serviceName,
+          description: newRequest.description,
+          location: {
+            state: newRequest.state,
+            city: newRequest.city,
+            address: newRequest.address,
+          },
+          preferred_date: newRequest.preferredDate,
+          preferred_time: newRequest.preferredTimeSlot,
+          status: newRequest.status,
+        })
+
+        .then(({ error }) => {
+          if (error) console.error('Supabase service request insert error:', error);
+        });
+    }
+
     return newRequest;
   };
+
 
   const updateServiceRequestStatus = (
     requestId: string,
