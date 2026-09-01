@@ -73,6 +73,15 @@ export const HomeView: React.FC = () => {
     }
   };
 
+  const handleScrollToCategories = () => {
+    const categoriesSection = document.getElementById('all-categories') || document.getElementById('categories-section');
+    if (categoriesSection) {
+      categoriesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      navigateTo('categories');
+    }
+  };
+
   return (
     <div className="space-y-12 sm:space-y-16 pb-16 bg-[#F8F9FB]">
       {/* 3. HERO SECTION - PROFESSIONAL POLISH */}
@@ -102,7 +111,7 @@ export const HomeView: React.FC = () => {
             <div className="flex flex-wrap items-center gap-4">
               <button
                 id="hero-shop-cta"
-                onClick={() => navigateTo('shop')}
+                onClick={handleScrollToCategories}
                 className="bg-white text-[#002D72] hover:bg-slate-100 px-8 py-3.5 rounded-full font-bold text-sm shadow-xl transition-all cursor-pointer flex items-center gap-2"
               >
                 <span>Shop Now</span>
@@ -140,7 +149,7 @@ export const HomeView: React.FC = () => {
       </div>
 
       {/* 4. SHOP BY CATEGORY - PROFESSIONAL POLISH */}
-      <section id="categories-section" className="max-w-7xl mx-auto px-4 sm:px-6">
+      <section id="all-categories" className="max-w-7xl mx-auto px-4 sm:px-6 scroll-mt-24">
         <div className="flex items-end justify-between mb-6">
           <div className="flex flex-col">
             <h2 className="text-xl sm:text-2xl font-bold text-[#002D72]">Shop By Category</h2>

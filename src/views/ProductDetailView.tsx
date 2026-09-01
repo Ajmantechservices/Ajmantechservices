@@ -32,7 +32,7 @@ export const ProductDetailView: React.FC = () => {
     showToast,
   } = useStore();
 
-  const productId = navigationState.productId || 'prod-01';
+  const productId = navigationState?.productId || 'prod-01';
   const product = products.find((p) => p.id === productId) || products[0];
 
   const [activeImageIdx, setActiveImageIdx] = useState(0);

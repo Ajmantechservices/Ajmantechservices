@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
 import {
@@ -19,8 +19,14 @@ export const ShopView: React.FC = () => {
 
   // Filters State
   const [selectedCategory, setSelectedCategory] = useState<string>(
-    navigationState.categorySlug || 'All'
+    navigationState?.categorySlug || 'All'
   );
+
+  useEffect(() => {
+    if (navigationState?.categorySlug) {
+      setSelectedCategory(navigationState.categorySlug);
+    }
+  }, [navigationState?.categorySlug]);
   const [searchQuery, setSearchQuery] = useState('');
   const [priceRange, setPriceRange] = useState<number>(300000);
   const [inStockOnly, setInStockOnly] = useState(false);

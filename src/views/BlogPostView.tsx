@@ -5,7 +5,7 @@ import { Clock, User, ArrowLeft, Share2, Sparkles, MessageCircle, Wrench, Shoppi
 export const BlogPostView: React.FC = () => {
   const { navigationState, blogPosts, navigateTo, openWhatsApp, openServiceModal, showToast } = useStore();
 
-  const blogId = navigationState.blogId || 'blog-01';
+  const blogId = navigationState?.blogId || 'blog-01';
   const post = blogPosts.find((p) => p.id === blogId) || blogPosts[0];
 
   if (!post) {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
   Product,
   Category,
@@ -35,6 +35,14 @@ interface Toast {
   message: string;
 }
 
+export interface NavigationState {
+  productId?: string | null;
+  serviceId?: string | null;
+  blogId?: string | null;
+  categorySlug?: string | null;
+  orderId?: string | null;
+}
+
 interface StoreContextType {
   // Navigation & routing state
   currentView: ViewState;
@@ -47,9 +55,10 @@ interface StoreContextType {
   setSelectedBlogPostId: (id: string | null) => void;
   selectedCategorySlug: string | null;
   setSelectedCategorySlug: (slug: string | null) => void;
+  navigationState: NavigationState;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  navigateTo: (view: ViewState, params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string }) => void;
+  navigateTo: (view: ViewState, params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string; orderId?: string }) => void;
 
   // Modals & Drawers
   quickViewProduct: Product | null;
@@ -562,16 +571,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Scroll to top on view change
   const navigateTo = (
     view: ViewState,
-    params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string }
+    params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string; orderId?: string }
   ) => {
-    if (params?.productId) setSelectedProductId(params.productId);
-    if (params?.serviceId) setSelectedServiceId(params.serviceId);
-    if (params?.blogId) setSelectedBlogPostId(params.blogId);
-    if (params?.categorySlug) setSelectedCategorySlug(params.categorySlug);
+    if (params?.productId !== undefined) setSelectedProductId(params.productId || null);
+    if (params?.serviceId !== undefined) setSelectedServiceId(params.serviceId || null);
+    if (params?.blogId !== undefined) setSelectedBlogPostId(params.blogId || null);
+    if (params?.categorySlug !== undefined) setSelectedCategorySlug(params.categorySlug || null);
+    if (params?.orderId) {
+      const found = orders.find((o) => o.id === params.orderId || o.orderNumber === params.orderId);
+      if (found) setActiveOrderForSuccess(found);
+    }
 
     setCurrentView(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const navigationState: NavigationState = useMemo(
+    () => ({
+      productId: selectedProductId,
+      serviceId: selectedServiceId,
+      blogId: selectedBlogPostId,
+      categorySlug: selectedCategorySlug,
+      orderId: activeOrderForSuccess?.id || null,
+    }),
+    [selectedProductId, selectedServiceId, selectedBlogPostId, selectedCategorySlug, activeOrderForSuccess]
+  );
 
   const openServiceModal = (defaultServiceType?: string) => {
     setServiceModalDefaultType(defaultServiceType);
@@ -1061,6 +1085,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setSelectedBlogPostId,
         selectedCategorySlug,
         setSelectedCategorySlug,
+        navigationState,
         searchQuery,
         setSearchQuery,
         navigateTo,

@@ -17,7 +17,7 @@ import {
 export const OrderSuccessView: React.FC = () => {
   const { navigationState, orders, formatNaira, navigateTo, openWhatsApp, storeSettings } = useStore();
 
-  const orderId = navigationState.orderId;
+  const orderId = navigationState?.orderId;
   const order = orders.find((o) => o.id === orderId) || orders[0];
 
   if (!order) {
