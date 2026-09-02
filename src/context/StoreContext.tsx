@@ -142,7 +142,7 @@ interface StoreContextType {
   deleteCategory: (id: string) => Promise<void> | void;
 
   // Gallery Operations
-  addGalleryImagesToProduct: (productId: string, imageUrls: string[], caption?: string) => Promise<boolean>;
+  addGalleryImagesToProduct: (productId: string, imageUrls: string[], caption?: string, displayOrder?: number) => Promise<boolean>;
   deleteProductGalleryItem: (galleryId: string, productId: string, imageUrl?: string) => Promise<boolean>;
   refreshCatalog: () => Promise<void>;
 
@@ -1194,7 +1194,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // Product Gallery Operations
-  const addGalleryImagesToProduct = async (productId: string, imageUrls: string[], caption?: string) => {
+  const addGalleryImagesToProduct = async (productId: string, imageUrls: string[], caption?: string, displayOrder: number = 0) => {
     const validUrls = imageUrls.map((u) => u.trim()).filter((u) => u.length > 0);
     if (validUrls.length === 0) return false;
 
@@ -1216,7 +1216,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // 2. Insert to Supabase product_gallery table & update products.gallery
     if (isSupabaseConfigured() && supabase) {
       try {
-        await addImagesToProductGallery(productId, validUrls, caption);
+        await addImagesToProductGallery(productId, validUrls, caption, displayOrder);
         const prod = products.find((p) => p.id === productId);
         const allImages = Array.from(new Set([...(prod?.images || []), ...validUrls]));
         await supabase.from('products').update({ gallery: allImages }).eq('id', productId);

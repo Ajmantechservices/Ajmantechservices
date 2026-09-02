@@ -25,9 +25,11 @@ import { TrackOrderView } from './views/TrackOrderView';
 import { CustomerAccountView } from './views/CustomerAccountView';
 import { WishlistView } from './views/WishlistView';
 import { AdminDashboardView } from './views/AdminDashboardView';
+import { AdminLoginView } from './views/AdminLoginView';
+import { AdminSignupView } from './views/AdminSignupView';
 
 const MainRouter: React.FC = () => {
-  const { currentView } = useStore();
+  const { currentView, isAdmin } = useStore();
 
   // Scroll to top whenever view changes
   useEffect(() => {
@@ -66,16 +68,27 @@ const MainRouter: React.FC = () => {
         return <CustomerAccountView />;
       case 'wishlist':
         return <WishlistView />;
+      case 'admin-login':
+        return <AdminLoginView />;
+      case 'admin-signup':
+        return <AdminSignupView />;
+      case 'admin-dashboard':
+        return isAdmin ? <AdminDashboardView /> : <AdminLoginView />;
       case 'admin':
-        return <AdminDashboardView />;
+        return isAdmin ? <AdminDashboardView /> : <AdminLoginView />;
       default:
         return <HomeView />;
     }
   };
 
+  const isAdminPortalView =
+    currentView === 'admin-login' ||
+    currentView === 'admin-signup' ||
+    ((currentView === 'admin' || currentView === 'admin-dashboard') && isAdmin);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-amber-400 selection:text-slate-950">
-      {/* Header */}
+      {/* Header - shown across all views; in admin portal it provides store navigation & admin status */}
       <Header />
 
       {/* Main Content Area */}
@@ -83,7 +96,7 @@ const MainRouter: React.FC = () => {
         {renderView()}
       </main>
 
-      {/* Footer */}
+      {/* Footer - hidden on dedicated admin dashboard for cleaner side-nav workspace if desired */}
       <Footer />
 
       {/* Overlays & Interactive Drawers/Modals */}

@@ -142,6 +142,7 @@ export const Header: React.FC = () => {
     openServiceModal,
     currentUser,
     logout,
+    isAdmin,
     products,
     services,
     formatNaira,
@@ -681,6 +682,17 @@ export const Header: React.FC = () => {
                       >
                         <Heart className="w-4 h-4 text-slate-400" />
                         My Wishlist ({wishlistCount})
+                      </button>
+                      <button
+                        id="header-admin-portal-link"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          navigateTo(isAdmin ? 'admin-dashboard' : 'admin-login');
+                        }}
+                        className="w-full px-4 py-2 text-left text-xs text-amber-700 hover:bg-amber-50 font-bold flex items-center gap-2 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                        Admin Portal {isAdmin && <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded-full">Active</span>}
                       </button>
                     </div>
 

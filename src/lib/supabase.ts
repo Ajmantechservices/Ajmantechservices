@@ -241,9 +241,24 @@ export async function fetchProductGallery(productId?: string) {
 }
 
 /**
+ * Attach a single image URL or multiple image URLs to a product in product_gallery table
+ */
+export async function insertProductGalleryEntry(productId: string, imageUrl: string, displayOrder: number = 0, caption?: string) {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  const cleanUrl = imageUrl.trim();
+  if (!cleanUrl) return { data: null, error: null };
+  return await supabase.from('product_gallery').insert({
+    product_id: productId,
+    image_url: cleanUrl,
+    display_order: displayOrder,
+    caption: caption || null,
+  }).select();
+}
+
+/**
  * Attach multiple image URLs to a product in product_gallery table
  */
-export async function addImagesToProductGallery(productId: string, imageUrls: string[], caption?: string) {
+export async function addImagesToProductGallery(productId: string, imageUrls: string[], caption?: string, startOrder: number = 0) {
   if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
   const rows = imageUrls
     .filter((url) => url.trim().length > 0)
@@ -251,7 +266,7 @@ export async function addImagesToProductGallery(productId: string, imageUrls: st
       product_id: productId,
       image_url: url.trim(),
       caption: caption || null,
-      display_order: index,
+      display_order: startOrder + index,
     }));
 
   if (rows.length === 0) return { data: null, error: null };
@@ -264,5 +279,78 @@ export async function addImagesToProductGallery(productId: string, imageUrls: st
 export async function removeProductGalleryImage(galleryId: string) {
   if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
   return await supabase.from('product_gallery').delete().eq('id', galleryId);
+}
+
+/**
+ * Check current Supabase auth session & verify if user has admin role
+ */
+export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user: User | null; email?: string }> {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { isAdmin: false, user: null };
+  }
+
+  try {
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !session || !session.user) {
+      return { isAdmin: false, user: null };
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, email')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    const role = profile?.role || session.user.user_metadata?.role;
+    const isAdmin = role === 'admin';
+
+    return {
+      isAdmin,
+      user: session.user,
+      email: profile?.email || session.user.email,
+    };
+  } catch (e) {
+    console.warn('Session check error:', e);
+    return { isAdmin: false, user: null };
+  }
+}
+
+export interface SupabaseDashboardCounts {
+  productsCount: number;
+  categoriesCount: number;
+  serviceRequestsCount: number;
+  ordersCount: number;
+}
+
+/**
+ * Fetch exact table counts directly from Supabase tables:
+ * products, categories, service_requests, and orders
+ */
+export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCounts | null> {
+  if (!supabase || !isSupabaseConfigured()) return null;
+
+  try {
+    const [
+      { count: prodCount, error: prodErr },
+      { count: catCount, error: catErr },
+      { count: srvCount, error: srvErr },
+      { count: ordCount, error: ordErr },
+    ] = await Promise.all([
+      supabase.from('products').select('*', { count: 'exact', head: true }),
+      supabase.from('categories').select('*', { count: 'exact', head: true }),
+      supabase.from('service_requests').select('*', { count: 'exact', head: true }),
+      supabase.from('orders').select('*', { count: 'exact', head: true }),
+    ]);
+
+    return {
+      productsCount: typeof prodCount === 'number' ? prodCount : 0,
+      categoriesCount: typeof catCount === 'number' ? catCount : 0,
+      serviceRequestsCount: typeof srvCount === 'number' ? srvCount : 0,
+      ordersCount: typeof ordCount === 'number' ? ordCount : 0,
+    };
+  } catch (err) {
+    console.warn('Supabase counts query error:', err);
+    return null;
+  }
 }
 
