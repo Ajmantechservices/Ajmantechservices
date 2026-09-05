@@ -114,7 +114,7 @@ export async function signInAdminWithSupabase(
     }
 
     // Check role in profiles table
-    const { data: profile, error: profileErr } = await supabase
+    let { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .select('role, full_name, email')
       .eq('id', data.user.id)
@@ -124,8 +124,29 @@ export async function signInAdminWithSupabase(
       console.warn('Profile fetch notice:', profileErr);
     }
 
-    // Role check
-    const userRole = profile?.role || data.user.user_metadata?.role || 'customer';
+    let userRole = profile?.role;
+
+    // Self-healing fallback for designated admin email if profile record was not created by trigger
+    if (userRole !== 'admin' && data.user.email?.toLowerCase() === 'joshuaajayi0148@gmail.com') {
+      try {
+        const { data: upserted } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            email: data.user.email,
+            full_name: data.user.user_metadata?.full_name || 'Joshua Ajayi',
+            role: 'admin',
+          })
+          .select('role')
+          .maybeSingle();
+
+        if (upserted?.role === 'admin') {
+          userRole = 'admin';
+        }
+      } catch (upsertErr) {
+        console.warn('Profile self-healing notice:', upsertErr);
+      }
+    }
 
     if (userRole !== 'admin') {
       // Clear session immediately since not an admin
@@ -134,7 +155,7 @@ export async function signInAdminWithSupabase(
         success: false,
         message: 'Access denied: Administrator privileges required.',
         isPrivilegeDenied: true,
-        role: userRole,
+        role: userRole || 'customer',
       };
     }
 

@@ -176,8 +176,18 @@ const STORAGE_KEYS = {
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Navigation State
-  const [currentView, setCurrentView] = useState<ViewState>('home');
+  // Navigation State with URL path detection
+  const getInitialView = (): ViewState => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path === '/admin/login' || path.startsWith('/admin/login')) return 'admin-login';
+      if (path === '/admin/dashboard' || path === '/admin' || path.startsWith('/admin/dashboard')) return 'admin-dashboard';
+      if (path === '/admin/signup') return 'admin-signup';
+    }
+    return 'home';
+  };
+
+  const [currentView, setCurrentView] = useState<ViewState>(getInitialView);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedBlogPostId, setSelectedBlogPostId] = useState<string | null>(null);
@@ -585,7 +595,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
 
-  // Scroll to top on view change
+  // Popstate listener to keep currentView in sync with browser navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path === '/admin/login') setCurrentView('admin-login');
+      else if (path === '/admin/dashboard' || path === '/admin') setCurrentView('admin-dashboard');
+      else if (path === '/admin/signup') setCurrentView('admin-signup');
+      else if (path === '/shop') setCurrentView('shop');
+      else if (path === '/services') setCurrentView('services');
+      else if (path === '/') setCurrentView('home');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Scroll to top on view change & sync URL
   const navigateTo = (
     view: ViewState,
     params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string; orderId?: string }
@@ -600,6 +625,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     setCurrentView(view);
+
+    if (typeof window !== 'undefined' && window.history) {
+      let targetPath = '/';
+      if (view === 'admin-login') targetPath = '/admin/login';
+      else if (view === 'admin-dashboard' || view === 'admin') targetPath = '/admin/dashboard';
+      else if (view === 'admin-signup') targetPath = '/admin/signup';
+      else if (view === 'shop') targetPath = '/shop';
+      else if (view === 'services') targetPath = '/services';
+      else if (view === 'portfolio') targetPath = '/portfolio';
+      else if (view === 'blog') targetPath = '/blog';
+      else if (view === 'about') targetPath = '/about';
+      else if (view === 'contact') targetPath = '/contact';
+
+      try {
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState({ view }, '', targetPath);
+        }
+      } catch (e) {
+        // Safe within sandbox iframe
+      }
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

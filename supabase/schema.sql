@@ -17,6 +17,7 @@ create table if not exists public.profiles (
 );
 
 -- Automatic trigger to create a profile row whenever a new user signs up in auth.users
+-- Automatically assigns 'admin' role to joshuaajayi0148@gmail.com
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -25,11 +26,18 @@ begin
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
-    coalesce(new.raw_user_meta_data->>'role', 'customer')
+    case 
+      when new.email = 'joshuaajayi0148@gmail.com' then 'admin'
+      else coalesce(new.raw_user_meta_data->>'role', 'customer')
+    end
   )
   on conflict (id) do update
   set email = excluded.email,
       full_name = coalesce(excluded.full_name, public.profiles.full_name),
+      role = case 
+        when excluded.email = 'joshuaajayi0148@gmail.com' then 'admin'
+        else excluded.role
+      end,
       updated_at = timezone('utc'::text, now());
   return new;
 end;
