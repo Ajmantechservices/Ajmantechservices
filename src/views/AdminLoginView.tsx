@@ -162,7 +162,7 @@ export const AdminLoginView: React.FC = () => {
       } else {
         setSeedResult({
           success: false,
-          message: data.message || 'Failed to seed admin account. Check your Service Role Key.',
+          message: data.error || data.message || 'Failed to seed admin account. Check your Service Role Key.',
         });
       }
     } catch (err: any) {

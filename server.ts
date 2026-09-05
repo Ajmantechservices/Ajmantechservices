@@ -37,23 +37,23 @@ async function startServer() {
   const handleSeedAdmin = async (req: express.Request, res: express.Response) => {
     try {
       const serviceRoleKey =
-        (req.headers['x-service-role-key'] as string) ||
-        req.body?.serviceRoleKey ||
         process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-
-      const email = (req.body?.email || req.query?.email || DEFAULT_ADMIN_EMAIL) as string;
-      const password = (req.body?.password || req.query?.password || DEFAULT_ADMIN_PASSWORD) as string;
-      const supabaseUrl = (req.body?.supabaseUrl || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) as string;
+        (req.headers['x-service-role-key'] as string) ||
+        req.body?.serviceRoleKey;
 
       if (!serviceRoleKey) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Supabase Service Role Key is required to bypass email verification and seed admin users. Provide it in SUPABASE_SERVICE_ROLE_KEY environment variable, x-service-role-key header, or request body { serviceRoleKey }.',
-          email,
+        return res.status(500).json({
+          error: 'Missing SUPABASE_SERVICE_ROLE_KEY environment variable',
         });
       }
+
+      const email = 'joshuaajayi0148@gmail.com';
+      const password = 'Ayomide0148';
+      const supabaseUrl =
+        (req.body?.supabaseUrl as string) ||
+        process.env.VITE_SUPABASE_URL ||
+        process.env.SUPABASE_URL ||
+        'https://ynrmthgxykbvuvtwhvlq.supabase.co';
 
       const result = await seedAdminUser({
         supabaseUrl,
@@ -64,15 +64,19 @@ async function startServer() {
       });
 
       if (result.success) {
-        return res.status(200).json(result);
+        return res.status(200).json({
+          success: true,
+          message: 'Admin account seeded successfully',
+        });
       } else {
-        return res.status(400).json(result);
+        return res.status(500).json({
+          error: result.message || 'Failed to seed admin user',
+        });
       }
     } catch (err: any) {
       console.error('API seed-admin error:', err);
       return res.status(500).json({
-        success: false,
-        message: err?.message || 'Server error while executing admin seed',
+        error: err?.message || 'Failed to seed admin account',
       });
     }
   };
