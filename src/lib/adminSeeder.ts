@@ -74,7 +74,7 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
     try {
       const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
       if (!listErr && usersData?.users) {
-        const found = usersData.users.find((u) => u.email?.toLowerCase() === email);
+        const found = usersData.users.find((u: any) => u.email?.toLowerCase() === email);
         if (found) {
           existingUserId = found.id;
           existingMetadata = found.user_metadata || {};
@@ -129,7 +129,7 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
         if (createErr.message.toLowerCase().includes('already registered') || createErr.message.toLowerCase().includes('already exists')) {
           // Re-fetch users or query
           const { data: retryUsers } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-          const userFound = retryUsers?.users?.find((u) => u.email?.toLowerCase() === email);
+          const userFound = retryUsers?.users?.find((u: any) => u.email?.toLowerCase() === email);
           if (userFound) {
             const { error: retryUpdateErr } = await supabaseAdmin.auth.admin.updateUserById(userFound.id, {
               password,

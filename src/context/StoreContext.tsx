@@ -35,6 +35,7 @@ import {
   fetchProductGallery,
   addImagesToProductGallery,
   removeProductGalleryImage,
+  TARGET_ADMIN_EMAIL,
 } from '../lib/supabase';
 
 
@@ -1143,33 +1144,69 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const adminLogin = async (email: string, pass: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
+
+    // Strict hard-lock check before auth
+    if (normalizedEmail !== normalizedTarget) {
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+      }
+      setIsAdmin(false);
+      return {
+        success: false,
+        message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+        isPrivilegeDenied: true,
+      };
+    }
+
     const res = await signInAdminWithSupabase(email, pass);
     if (res.success && res.role === 'admin') {
+      const authenticatedEmail = (res.user?.email || email).trim().toLowerCase();
+      if (authenticatedEmail !== normalizedTarget) {
+        if (isSupabaseConfigured() && supabase) {
+          try {
+            await supabase.auth.signOut();
+          } catch {}
+        }
+        setIsAdmin(false);
+        return {
+          success: false,
+          message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+          isPrivilegeDenied: true,
+        };
+      }
+
       setIsAdmin(true);
       const adminUser: UserAccount = {
-        id: res.user?.id || 'usr-admin-01',
-        fullName: res.user?.user_metadata?.full_name || 'AjmanTech Administrator',
-        email: res.user?.email || email,
+        id: res.user?.id || 'usr-admin-owner',
+        fullName: res.user?.user_metadata?.full_name || 'Engr. Joshua Ajayi',
+        email: TARGET_ADMIN_EMAIL,
         phone: res.user?.phone || '+234 802 345 6789',
         role: 'admin',
         addresses: [],
         createdAt: res.user?.created_at || new Date().toISOString().split('T')[0],
       };
       setCurrentUser(adminUser);
-      showToast('Welcome to Admin Portal, Administrator!');
+      showToast('Welcome to Admin Portal, Site Owner!');
       return { success: true, message: 'Admin login successful' };
     } else {
       setIsAdmin(false);
       return {
         success: false,
-        message: res.message || 'Access denied: Administrator privileges required.',
+        message: res.message || 'Unauthorized access: Only the site owner can log into this dashboard.',
         isPrivilegeDenied: res.isPrivilegeDenied,
       };
     }
   };
 
-  const adminSignUp = async (fullName: string, email: string, pass: string) => {
-    return await signUpAdminWithSupabase(fullName, email, pass);
+  const adminSignUp = async (_fullName: string, _email: string, _pass: string) => {
+    return {
+      success: false,
+      message: 'Unauthorized access: Public admin registration is disabled. Only the site owner can access the admin dashboard.',
+    };
   };
 
   const adminLogout = async () => {

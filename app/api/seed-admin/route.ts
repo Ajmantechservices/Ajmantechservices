@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     if (listError) {
       console.warn('listUsers notice:', listError.message);
     }
-    const existingUser = usersData?.users?.find((u) => u.email?.toLowerCase() === targetEmail.toLowerCase());
+    const existingUser = usersData?.users?.find((u: any) => u.email?.toLowerCase() === targetEmail.toLowerCase());
 
     let userId = existingUser?.id;
 

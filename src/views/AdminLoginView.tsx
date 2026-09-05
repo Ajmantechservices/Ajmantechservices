@@ -18,7 +18,7 @@ import {
   Check,
   RefreshCw,
 } from 'lucide-react';
-import { supabase, getSupabaseConfigStatus } from '../lib/supabase';
+import { supabase, getSupabaseConfigStatus, isSupabaseConfigured } from '../lib/supabase';
 
 const TARGET_ADMIN_EMAIL = 'joshuaajayi0148@gmail.com';
 const TARGET_ADMIN_PASSWORD = 'Ayomide0148';
@@ -58,7 +58,7 @@ TO authenticated
 USING (true);`;
 
 export const AdminLoginView: React.FC = () => {
-  const { adminLogin, navigateTo, showToast, isAdmin: storeIsAdmin } = useStore();
+  const { adminLogin, adminLogout, navigateTo, showToast, isAdmin: storeIsAdmin, currentUser } = useStore();
 
   // Pre-configured with target admin credentials
   const [email, setEmail] = useState<string>(TARGET_ADMIN_EMAIL);
@@ -78,12 +78,34 @@ export const AdminLoginView: React.FC = () => {
 
   const supabaseStatus = getSupabaseConfigStatus();
 
-  // If already logged in as admin, redirect to dashboard
+  // Read URL error query param if redirected from middleware or dashboard
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const err = urlParams.get('error');
+      if (err) {
+        setIsPrivilegeError(true);
+        if (err === 'unauthorized' || err.includes('Unauthorized') || err.includes('site owner')) {
+          setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
+        } else {
+          setErrorMessage(decodeURIComponent(err));
+        }
+      }
+    }
+  }, []);
+
+  // If already logged in as admin, check if email is EXACTLY target admin
   useEffect(() => {
     if (storeIsAdmin) {
-      navigateTo('admin-dashboard');
+      if (currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()) {
+        navigateTo('admin-dashboard');
+      } else {
+        adminLogout();
+        setIsPrivilegeError(true);
+        setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
+      }
     }
-  }, [storeIsAdmin, navigateTo]);
+  }, [storeIsAdmin, currentUser, navigateTo, adminLogout]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,9 +117,25 @@ export const AdminLoginView: React.FC = () => {
       return;
     }
 
+    const inputEmail = email.trim().toLowerCase();
+    const targetEmail = TARGET_ADMIN_EMAIL.toLowerCase();
+
+    // 1. Initial hard-lock: Check if input email is EXACTLY joshuaajayi0148@gmail.com
+    if (inputEmail !== targetEmail) {
+      if (supabase && isSupabaseConfigured()) {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+      }
+      setIsPrivilegeError(true);
+      setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
+      showToast('Unauthorized access: Only the site owner can log into this dashboard.', 'error');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // 1. Authenticate using supabase.auth.signInWithPassword({ email, password })
+      // 2. Authenticate using supabase.auth.signInWithPassword({ email, password })
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -109,28 +147,57 @@ export const AdminLoginView: React.FC = () => {
         return;
       }
 
-      // 2. Check user role using both sources:
+      // 3. Hard-lock check: authenticated user's email MUST be EXACTLY joshuaajayi0148@gmail.com
       const user = data.user;
-      const metaRole = user?.user_metadata?.role;
+      const authenticatedEmail = user.email?.trim().toLowerCase();
 
+      if (authenticatedEmail !== targetEmail) {
+        await supabase.auth.signOut();
+        setIsPrivilegeError(true);
+        setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
+        showToast('Unauthorized access: Only the site owner can log into this dashboard.', 'error');
+        setIsLoading(false);
+        return;
+      }
+
+      // 4. Check user role using both sources:
+      const metaRole = user?.user_metadata?.role;
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .maybeSingle();
 
-      const isAdmin = profile?.role === 'admin' || metaRole === 'admin';
+      let isAdmin = profile?.role === 'admin' || metaRole === 'admin';
 
-      // 3. If isAdmin is true, redirect the user to /admin/dashboard
+      // Self-heal profile role for target admin email if missing
+      if (!isAdmin && authenticatedEmail === targetEmail) {
+        try {
+          await supabase
+            .from('profiles')
+            .upsert({
+              id: user.id,
+              email: user.email,
+              full_name: user.user_metadata?.full_name || 'Joshua Ajayi',
+              role: 'admin',
+            });
+          isAdmin = true;
+        } catch {}
+      }
+
       if (isAdmin) {
-        await adminLogin(email.trim(), password);
-        showToast('Authentication successful! Welcome to the Admin Portal.');
-        navigateTo('admin-dashboard');
+        const loginRes = await adminLogin(email.trim(), password);
+        if (loginRes.success) {
+          showToast('Authentication successful! Welcome to the Admin Portal.');
+          navigateTo('admin-dashboard');
+        } else {
+          setErrorMessage(loginRes.message || 'Unauthorized access: Only the site owner can log into this dashboard.');
+          setIsPrivilegeError(true);
+        }
       } else {
-        // 4. If isAdmin is false, sign out and present an access error message
         await supabase.auth.signOut();
         setIsPrivilegeError(true);
-        setErrorMessage('Access denied: Administrator privileges required.');
+        setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'An unexpected authentication error occurred.');
@@ -384,13 +451,12 @@ export const AdminLoginView: React.FC = () => {
                 <Terminal className="w-3.5 h-3.5 text-slate-400" /> View SQL Trigger
               </button>
 
-              <button
-                id="go-to-admin-signup-btn"
-                onClick={() => navigateTo('admin-signup')}
-                className="font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              <div
+                id="admin-registration-disabled-badge"
+                className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 font-mono bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60"
               >
-                Register / Sign Up
-              </button>
+                <Lock className="w-3 h-3 text-amber-400" /> Public Registration Disabled
+              </div>
             </div>
           </div>
         </div>

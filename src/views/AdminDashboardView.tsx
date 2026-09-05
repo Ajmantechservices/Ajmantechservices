@@ -47,6 +47,8 @@ import {
   fetchSupabaseTableCounts,
   checkAdminAuthSession,
   SupabaseDashboardCounts,
+  supabase,
+  TARGET_ADMIN_EMAIL,
 } from '../lib/supabase';
 
 type AdminTab =
@@ -116,20 +118,55 @@ export const AdminDashboardView: React.FC = () => {
     let isMounted = true;
 
     const verifyAdminAuth = async () => {
-      // 1. Check local store state
-      if (!isAdmin) {
-        showToast('Access denied: Administrator privileges required.', 'error');
+      const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
+
+      // 1. Check local store state and currentUser email
+      const userEmail = currentUser?.email?.toLowerCase().trim();
+      if (!isAdmin || userEmail !== normalizedTarget) {
+        if (isSupabaseConfigured() && supabase) {
+          try {
+            await supabase.auth.signOut();
+          } catch {}
+        }
+        await adminLogout();
+        showToast('Unauthorized access: Only the site owner can log into this dashboard.', 'error');
         navigateTo('admin-login');
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(
+            null,
+            '',
+            `/admin/login?error=${encodeURIComponent(
+              'Unauthorized access: Only the site owner can log into this dashboard.'
+            )}`
+          );
+        }
         return;
       }
 
       // 2. Check live Supabase authentication session
       if (isSupabaseConfigured()) {
-        const { isAdmin: isCloudAdmin } = await checkAdminAuthSession();
-        // If not admin in cloud profiles and not default local super-admin
-        if (!isCloudAdmin && isMounted && currentUser?.email !== 'admin@ajmantech.ng') {
-          showToast('Administrator session invalid or expired. Please sign in.', 'error');
+        const { isAdmin: isCloudAdmin, email: cloudEmail } = await checkAdminAuthSession();
+        const normalizedCloudEmail = cloudEmail?.toLowerCase().trim();
+
+        // If not admin in cloud profiles, or email does NOT match TARGET_ADMIN_EMAIL
+        if ((!isCloudAdmin || normalizedCloudEmail !== normalizedTarget) && isMounted) {
+          if (supabase) {
+            try {
+              await supabase.auth.signOut();
+            } catch {}
+          }
+          await adminLogout();
+          showToast('Unauthorized access: Only the site owner can log into this dashboard.', 'error');
           navigateTo('admin-login');
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(
+              null,
+              '',
+              `/admin/login?error=${encodeURIComponent(
+                'Unauthorized access: Only the site owner can log into this dashboard.'
+              )}`
+            );
+          }
         }
       }
     };
@@ -139,7 +176,7 @@ export const AdminDashboardView: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin, navigateTo, showToast, currentUser]);
+  }, [isAdmin, navigateTo, showToast, currentUser, adminLogout]);
 
   // -------------------------------------------------------------
   // Load Table Counts Directly from Supabase

@@ -77,26 +77,41 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
  * Sign in admin user using Supabase Auth & check role in profiles table.
  * If role !== 'admin', signs out session and returns access denied error.
  */
+export const TARGET_ADMIN_EMAIL = 'joshuaajayi0148@gmail.com';
+
 export async function signInAdminWithSupabase(
   email: string,
   pass: string
 ): Promise<AdminAuthResult> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
+
+  // Hard-lock: Check if requested email is EXACTLY joshuaajayi0148@gmail.com
+  if (normalizedEmail !== normalizedTarget) {
+    if (supabase && isSupabaseConfigured()) {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+    }
+    return {
+      success: false,
+      message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+      isPrivilegeDenied: true,
+    };
+  }
+
   if (!supabase || !isSupabaseConfigured()) {
-    // Graceful fallback for local development or demo credentials
-    if (
-      email.toLowerCase() === 'admin@ajmantech.ng' ||
-      pass === 'admin123' ||
-      pass === 'ajmantech'
-    ) {
+    // Graceful fallback for local development strictly for designated admin
+    if (pass === 'Ayomide0148' || pass === 'admin123' || pass === 'ajmantech') {
       return {
         success: true,
-        message: 'Admin authentication successful (Local Admin Mode)',
+        message: 'Admin authentication successful (Designated Site Owner Mode)',
         role: 'admin',
       };
     }
     return {
       success: false,
-      message: 'Supabase is not configured yet. Configure VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY in your settings, or use admin@ajmantech.ng.',
+      message: 'Supabase is not configured yet. Set VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY, or use Ayomide0148.',
     };
   }
 
@@ -110,6 +125,17 @@ export async function signInAdminWithSupabase(
       return {
         success: false,
         message: error?.message || 'Invalid email or password.',
+      };
+    }
+
+    // Hard-lock: Check if authenticated user's email is EXACTLY joshuaajayi0148@gmail.com
+    const authenticatedEmail = data.user.email?.trim().toLowerCase();
+    if (authenticatedEmail !== normalizedTarget) {
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+        isPrivilegeDenied: true,
       };
     }
 
@@ -130,7 +156,7 @@ export async function signInAdminWithSupabase(
     let isAdmin = profile?.role === 'admin' || metaRole === 'admin';
 
     // Self-healing fallback for designated admin email if profile record was not created by trigger
-    if (!isAdmin && user.email?.toLowerCase() === 'joshuaajayi0148@gmail.com') {
+    if (!isAdmin && authenticatedEmail === normalizedTarget) {
       try {
         const { data: upserted } = await supabase
           .from('profiles')
@@ -156,7 +182,7 @@ export async function signInAdminWithSupabase(
       await supabase.auth.signOut();
       return {
         success: false,
-        message: 'Access denied: Administrator privileges required.',
+        message: 'Unauthorized access: Only the site owner can log into this dashboard.',
         isPrivilegeDenied: true,
         role: profile?.role || metaRole || 'customer',
       };
@@ -177,66 +203,18 @@ export async function signInAdminWithSupabase(
 }
 
 /**
- * Sign up a new account through Supabase Auth and initialize profile
+ * Public admin registration is disabled.
+ * Only the designated site owner (joshuaajayi0148@gmail.com) is permitted admin access.
  */
 export async function signUpAdminWithSupabase(
-  fullName: string,
-  email: string,
-  pass: string
+  _fullName: string,
+  _email: string,
+  _pass: string
 ): Promise<{ success: boolean; message: string; user?: User | null; requiresRolePromotion?: boolean }> {
-  if (!supabase || !isSupabaseConfigured()) {
-    return {
-      success: true,
-      message: 'Account registered locally. (Connect Supabase to persist live auth).',
-      requiresRolePromotion: true,
-    };
-  }
-
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password: pass,
-      options: {
-        data: {
-          full_name: fullName.trim(),
-          role: 'customer',
-        },
-      },
-    });
-
-    if (error) {
-      return {
-        success: false,
-        message: error.message,
-      };
-    }
-
-    if (data.user) {
-      // Upsert profile record in profiles table
-      try {
-        await supabase.from('profiles').upsert({
-          id: data.user.id,
-          email: data.user.email,
-          full_name: fullName.trim(),
-          role: 'customer',
-        });
-      } catch (pErr) {
-        console.warn('Profile upsert notice:', pErr);
-      }
-    }
-
-    return {
-      success: true,
-      message: 'Admin account created successfully! Please update your role in Supabase profiles table.',
-      user: data.user,
-      requiresRolePromotion: true,
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      message: err?.message || 'Registration failed.',
-    };
-  }
+  return {
+    success: false,
+    message: 'Unauthorized access: Public admin registration is disabled. Only the site owner can access the admin dashboard.',
+  };
 }
 
 /**
@@ -319,6 +297,12 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
       return { isAdmin: false, user: null };
     }
 
+    const sessionEmail = session.user.email?.toLowerCase().trim();
+    if (sessionEmail !== TARGET_ADMIN_EMAIL.toLowerCase()) {
+      await supabase.auth.signOut();
+      return { isAdmin: false, user: null };
+    }
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('role, email')
@@ -328,8 +312,13 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
     const role = profile?.role || session.user.user_metadata?.role;
     const isAdmin = role === 'admin';
 
+    if (!isAdmin) {
+      await supabase.auth.signOut();
+      return { isAdmin: false, user: null };
+    }
+
     return {
-      isAdmin,
+      isAdmin: true,
       user: session.user,
       email: profile?.email || session.user.email,
     };
@@ -337,13 +326,6 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
     console.warn('Session check error:', e);
     return { isAdmin: false, user: null };
   }
-}
-
-export interface SupabaseDashboardCounts {
-  productsCount: number;
-  categoriesCount: number;
-  serviceRequestsCount: number;
-  ordersCount: number;
 }
 
 export interface SupabaseDashboardCounts {

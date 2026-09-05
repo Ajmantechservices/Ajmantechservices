@@ -40,7 +40,7 @@ async function runSeedAdminLogic(providedKey?: string) {
   }
 
   const existingUser = usersData?.users?.find(
-    (u) => u.email?.toLowerCase() === email.toLowerCase()
+    (u: any) => u.email?.toLowerCase() === email.toLowerCase()
   );
 
   if (existingUser) {
@@ -74,7 +74,7 @@ async function runSeedAdminLogic(providedKey?: string) {
     if (createError) {
       if (createError.message?.toLowerCase().includes('already')) {
         const { data: retryList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-        const retryUser = retryList?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+        const retryUser = retryList?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
         if (retryUser) {
           const { error: retryUpdateErr } = await supabaseAdmin.auth.admin.updateUserById(retryUser.id, {
             password,
