@@ -18,7 +18,7 @@ import {
   Check,
   RefreshCw,
 } from 'lucide-react';
-import { getSupabaseConfigStatus } from '../lib/supabase';
+import { supabase, getSupabaseConfigStatus } from '../lib/supabase';
 
 const TARGET_ADMIN_EMAIL = 'joshuaajayi0148@gmail.com';
 const TARGET_ADMIN_PASSWORD = 'Ayomide0148';
@@ -58,7 +58,7 @@ TO authenticated
 USING (true);`;
 
 export const AdminLoginView: React.FC = () => {
-  const { adminLogin, navigateTo, showToast, isAdmin } = useStore();
+  const { adminLogin, navigateTo, showToast, isAdmin: storeIsAdmin } = useStore();
 
   // Pre-configured with target admin credentials
   const [email, setEmail] = useState<string>(TARGET_ADMIN_EMAIL);
@@ -80,10 +80,10 @@ export const AdminLoginView: React.FC = () => {
 
   // If already logged in as admin, redirect to dashboard
   useEffect(() => {
-    if (isAdmin) {
+    if (storeIsAdmin) {
       navigateTo('admin-dashboard');
     }
-  }, [isAdmin, navigateTo]);
+  }, [storeIsAdmin, navigateTo]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,15 +97,40 @@ export const AdminLoginView: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const result = await adminLogin(email.trim(), password);
-      if (result.success) {
+      // 1. Authenticate using supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error || !data.user) {
+        setErrorMessage(error?.message || 'Invalid email or password.');
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Check user role using both sources:
+      const user = data.user;
+      const metaRole = user?.user_metadata?.role;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const isAdmin = profile?.role === 'admin' || metaRole === 'admin';
+
+      // 3. If isAdmin is true, redirect the user to /admin/dashboard
+      if (isAdmin) {
+        await adminLogin(email.trim(), password);
         showToast('Authentication successful! Welcome to the Admin Portal.');
         navigateTo('admin-dashboard');
       } else {
-        setErrorMessage(result.message || 'Access denied: Administrator privileges required.');
-        if (result.isPrivilegeDenied || result.message.includes('Administrator privileges required')) {
-          setIsPrivilegeError(true);
-        }
+        // 4. If isAdmin is false, sign out and present an access error message
+        await supabase.auth.signOut();
+        setIsPrivilegeError(true);
+        setErrorMessage('Access denied: Administrator privileges required.');
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'An unexpected authentication error occurred.');

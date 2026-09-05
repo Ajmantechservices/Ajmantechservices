@@ -113,49 +113,52 @@ export async function signInAdminWithSupabase(
       };
     }
 
-    // Check role in profiles table
-    let { data: profile, error: profileErr } = await supabase
+    // Check user role using both sources:
+    const user = data.user;
+    const metaRole = user?.user_metadata?.role;
+
+    const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('role, full_name, email')
-      .eq('id', data.user.id)
+      .select('role')
+      .eq('id', user.id)
       .maybeSingle();
 
     if (profileErr) {
       console.warn('Profile fetch notice:', profileErr);
     }
 
-    let userRole = profile?.role;
+    let isAdmin = profile?.role === 'admin' || metaRole === 'admin';
 
     // Self-healing fallback for designated admin email if profile record was not created by trigger
-    if (userRole !== 'admin' && data.user.email?.toLowerCase() === 'joshuaajayi0148@gmail.com') {
+    if (!isAdmin && user.email?.toLowerCase() === 'joshuaajayi0148@gmail.com') {
       try {
         const { data: upserted } = await supabase
           .from('profiles')
           .upsert({
-            id: data.user.id,
-            email: data.user.email,
-            full_name: data.user.user_metadata?.full_name || 'Joshua Ajayi',
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || 'Joshua Ajayi',
             role: 'admin',
           })
           .select('role')
           .maybeSingle();
 
         if (upserted?.role === 'admin') {
-          userRole = 'admin';
+          isAdmin = true;
         }
       } catch (upsertErr) {
         console.warn('Profile self-healing notice:', upsertErr);
       }
     }
 
-    if (userRole !== 'admin') {
+    if (!isAdmin) {
       // Clear session immediately since not an admin
       await supabase.auth.signOut();
       return {
         success: false,
         message: 'Access denied: Administrator privileges required.',
         isPrivilegeDenied: true,
-        role: userRole || 'customer',
+        role: profile?.role || metaRole || 'customer',
       };
     }
 
