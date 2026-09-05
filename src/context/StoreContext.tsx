@@ -48,6 +48,7 @@ export interface NavigationState {
   productId?: string | null;
   serviceId?: string | null;
   blogId?: string | null;
+  blogSlug?: string | null;
   categorySlug?: string | null;
   orderId?: string | null;
 }
@@ -62,12 +63,14 @@ interface StoreContextType {
   setSelectedServiceId: (id: string | null) => void;
   selectedBlogPostId: string | null;
   setSelectedBlogPostId: (id: string | null) => void;
+  selectedBlogSlug: string | null;
+  setSelectedBlogSlug: (slug: string | null) => void;
   selectedCategorySlug: string | null;
   setSelectedCategorySlug: (slug: string | null) => void;
   navigationState: NavigationState;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  navigateTo: (view: ViewState, params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string; orderId?: string }) => void;
+  navigateTo: (view: ViewState, params?: { productId?: string; serviceId?: string; blogId?: string; slug?: string; categorySlug?: string; orderId?: string }) => void;
 
   // Modals & Drawers
   quickViewProduct: Product | null;
@@ -86,7 +89,34 @@ interface StoreContextType {
   categories: Category[];
   services: ServiceItem[];
   projects: ProjectPortfolio[];
+  // Blog Posts Management
   blogPosts: BlogPost[];
+  createPost: (postData: {
+    title: string;
+    slug: string;
+    excerpt?: string;
+    featured_image?: string;
+    content: string;
+    published?: boolean;
+    category?: string;
+    author?: string;
+  }) => Promise<{ success: boolean; data?: BlogPost; error?: string }>;
+  updatePost: (
+    id: string,
+    postData: {
+      title?: string;
+      slug?: string;
+      excerpt?: string;
+      featured_image?: string;
+      content?: string;
+      published?: boolean;
+      category?: string;
+      author?: string;
+    }
+  ) => Promise<{ success: boolean; data?: BlogPost; error?: string }>;
+  deletePost: (id: string) => Promise<{ success: boolean; error?: string }>;
+  refreshPosts: () => Promise<void>;
+
   reviews: Review[];
   faqs: FAQItem[];
   storeSettings: StoreSettings;
@@ -183,6 +213,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (path === '/admin/login' || path.startsWith('/admin/login')) return 'admin-login';
       if (path === '/admin/dashboard' || path === '/admin' || path.startsWith('/admin/dashboard')) return 'admin-dashboard';
       if (path === '/admin/signup') return 'admin-signup';
+      if (path === '/blog' || path === '/blog/') return 'blog';
+      if (path.startsWith('/blog/')) return 'blog-detail';
+      if (path === '/shop') return 'shop';
+      if (path === '/services') return 'services';
     }
     return 'home';
   };
@@ -191,6 +225,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedBlogPostId, setSelectedBlogPostId] = useState<string | null>(null);
+  const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path.toLowerCase().startsWith('/blog/')) {
+        return decodeURIComponent(path.substring(6).replace(/\/$/, ''));
+      }
+    }
+    return null;
+  });
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -230,7 +273,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [categories, setCategories] = useState<Category[]>(() => loadStored(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES));
   const [services] = useState<ServiceItem[]>(() => loadStored(STORAGE_KEYS.SERVICES, INITIAL_SERVICES));
   const [projects] = useState<ProjectPortfolio[]>(() => loadStored(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS));
-  const [blogPosts] = useState<BlogPost[]>(() => loadStored(STORAGE_KEYS.BLOG, INITIAL_BLOG_POSTS));
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() => loadStored(STORAGE_KEYS.BLOG, INITIAL_BLOG_POSTS));
   const [reviews, setReviews] = useState<Review[]>(() => loadStored(STORAGE_KEYS.REVIEWS, INITIAL_REVIEWS));
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS);
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => loadStored(STORAGE_KEYS.SETTINGS, INITIAL_STORE_SETTINGS));
@@ -421,6 +464,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     try {
+      localStorage.setItem(STORAGE_KEYS.BLOG, JSON.stringify(blogPosts));
+    } catch (e) { console.error(e); }
+  }, [blogPosts]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
     } catch (e) { console.error(e); }
   }, [reviews]);
@@ -586,6 +635,70 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           setServiceRequests(mappedServices);
         }
 
+        // 5. Fetch Blog Posts from public.posts table
+        const { data: dbPosts, error: postErr } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!postErr && dbPosts && dbPosts.length > 0) {
+          const mappedPosts: BlogPost[] = dbPosts.map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            slug: p.slug,
+            excerpt: p.excerpt || '',
+            content: p.content || '',
+            category: 'Guides',
+            date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent',
+            author: 'Joshua Ajayi',
+            author_id: p.author_id,
+            readTime: '5 min read',
+            image: p.featured_image || 'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1000&auto=format&fit=crop',
+            featured_image: p.featured_image,
+            published: p.published !== false,
+            created_at: p.created_at,
+            updated_at: p.updated_at,
+            relatedProductIds: [],
+          }));
+          setBlogPosts(mappedPosts);
+        } else if (!postErr && (!dbPosts || dbPosts.length === 0)) {
+          // Seed INITIAL_BLOG_POSTS into public.posts for instant initial content
+          try {
+            const seedRows = INITIAL_BLOG_POSTS.map((bp) => ({
+              title: bp.title,
+              slug: bp.slug,
+              excerpt: bp.excerpt,
+              featured_image: bp.image,
+              content: Array.isArray(bp.content) ? bp.content.join('\n\n') : bp.content,
+              published: true,
+            }));
+            const { data: seeded } = await supabase.from('posts').insert(seedRows).select();
+            if (seeded && seeded.length > 0) {
+              const mapped: BlogPost[] = seeded.map((p: any) => ({
+                id: p.id,
+                title: p.title,
+                slug: p.slug,
+                excerpt: p.excerpt || '',
+                content: p.content || '',
+                category: 'Guides',
+                date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                author: 'Joshua Ajayi',
+                author_id: p.author_id,
+                readTime: '5 min read',
+                image: p.featured_image,
+                featured_image: p.featured_image,
+                published: true,
+                created_at: p.created_at,
+                updated_at: p.updated_at,
+                relatedProductIds: [],
+              }));
+              setBlogPosts(mapped);
+            }
+          } catch (seedErr) {
+            console.warn('Initial posts seeding notice:', seedErr);
+          }
+        }
+
       } catch (err) {
         console.warn('Supabase initial fetch notice:', err);
       }
@@ -604,6 +717,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       else if (path === '/admin/signup') setCurrentView('admin-signup');
       else if (path === '/shop') setCurrentView('shop');
       else if (path === '/services') setCurrentView('services');
+      else if (path === '/blog') setCurrentView('blog');
+      else if (path.startsWith('/blog/')) {
+        const slug = decodeURIComponent(path.replace(/^\/blog\//, '').replace(/\/$/, ''));
+        setSelectedBlogSlug(slug);
+        setCurrentView('blog-detail');
+      }
       else if (path === '/') setCurrentView('home');
     };
     window.addEventListener('popstate', handlePopState);
@@ -613,11 +732,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Scroll to top on view change & sync URL
   const navigateTo = (
     view: ViewState,
-    params?: { productId?: string; serviceId?: string; blogId?: string; categorySlug?: string; orderId?: string }
+    params?: { productId?: string; serviceId?: string; blogId?: string; slug?: string; categorySlug?: string; orderId?: string }
   ) => {
     if (params?.productId !== undefined) setSelectedProductId(params.productId || null);
     if (params?.serviceId !== undefined) setSelectedServiceId(params.serviceId || null);
     if (params?.blogId !== undefined) setSelectedBlogPostId(params.blogId || null);
+    if (params?.slug !== undefined) setSelectedBlogSlug(params.slug || null);
     if (params?.categorySlug !== undefined) setSelectedCategorySlug(params.categorySlug || null);
     if (params?.orderId) {
       const found = orders.find((o) => o.id === params.orderId || o.orderNumber === params.orderId);
@@ -635,12 +755,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       else if (view === 'services') targetPath = '/services';
       else if (view === 'portfolio') targetPath = '/portfolio';
       else if (view === 'blog') targetPath = '/blog';
+      else if (view === 'blog-detail') {
+        const postSlug = params?.slug || blogPosts.find((p) => p.id === params?.blogId || p.slug === params?.blogId)?.slug || params?.blogId || '';
+        targetPath = postSlug ? `/blog/${encodeURIComponent(postSlug)}` : '/blog';
+      }
       else if (view === 'about') targetPath = '/about';
       else if (view === 'contact') targetPath = '/contact';
 
       try {
         if (window.location.pathname !== targetPath) {
-          window.history.pushState({ view }, '', targetPath);
+          window.history.pushState({ view, slug: params?.slug }, '', targetPath);
         }
       } catch (e) {
         // Safe within sandbox iframe
@@ -655,10 +779,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       productId: selectedProductId,
       serviceId: selectedServiceId,
       blogId: selectedBlogPostId,
+      blogSlug: selectedBlogSlug,
       categorySlug: selectedCategorySlug,
       orderId: activeOrderForSuccess?.id || null,
     }),
-    [selectedProductId, selectedServiceId, selectedBlogPostId, selectedCategorySlug, activeOrderForSuccess]
+    [selectedProductId, selectedServiceId, selectedBlogPostId, selectedBlogSlug, selectedCategorySlug, activeOrderForSuccess]
   );
 
   const openServiceModal = (defaultServiceType?: string) => {
@@ -1367,6 +1492,189 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  // Blog Posts Management directly connected to public.posts table
+  const createPost = async (postData: {
+    title: string;
+    slug: string;
+    excerpt?: string;
+    featured_image?: string;
+    content: string;
+    published?: boolean;
+    category?: string;
+    author?: string;
+  }) => {
+    const formattedSlug =
+      (postData.slug || postData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')) ||
+      'post-' + Date.now();
+
+    let newPost: BlogPost = {
+      id: 'post-' + Date.now(),
+      title: postData.title,
+      slug: formattedSlug,
+      excerpt: postData.excerpt || '',
+      featured_image: postData.featured_image || '',
+      image:
+        postData.featured_image ||
+        'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1000&auto=format&fit=crop',
+      content: postData.content,
+      published: postData.published ?? true,
+      category: postData.category || 'Guides',
+      author: postData.author || currentUser?.fullName || 'Joshua Ajayi',
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      readTime: '5 min read',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { data: dbData, error: dbErr } = await supabase
+          .from('posts')
+          .insert({
+            title: postData.title,
+            slug: formattedSlug,
+            excerpt: postData.excerpt || null,
+            featured_image: postData.featured_image || null,
+            content: postData.content,
+            published: postData.published ?? true,
+          })
+          .select()
+          .single();
+
+        if (dbErr) {
+          console.warn('Supabase post insert notice:', dbErr);
+          showToast(`Supabase: ${dbErr.message}`, 'error');
+        } else if (dbData) {
+          newPost = {
+            ...newPost,
+            id: dbData.id,
+            created_at: dbData.created_at,
+            updated_at: dbData.updated_at,
+          };
+        }
+      } catch (err: any) {
+        console.warn('Supabase post create catch:', err);
+      }
+    }
+
+    setBlogPosts((prev) => [newPost, ...prev]);
+    showToast(`Article "${newPost.title}" created successfully!`);
+    return { success: true, data: newPost };
+  };
+
+  const updatePost = async (
+    id: string,
+    postData: {
+      title?: string;
+      slug?: string;
+      excerpt?: string;
+      featured_image?: string;
+      content?: string;
+      published?: boolean;
+      category?: string;
+      author?: string;
+    }
+  ) => {
+    let updatedPost: BlogPost | undefined;
+
+    setBlogPosts((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          updatedPost = {
+            ...p,
+            ...postData,
+            image: postData.featured_image !== undefined ? postData.featured_image : p.image,
+            updated_at: new Date().toISOString(),
+          };
+          return updatedPost;
+        }
+        return p;
+      })
+    );
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const payload: any = {
+          updated_at: new Date().toISOString(),
+        };
+        if (postData.title !== undefined) payload.title = postData.title;
+        if (postData.slug !== undefined) payload.slug = postData.slug;
+        if (postData.excerpt !== undefined) payload.excerpt = postData.excerpt;
+        if (postData.featured_image !== undefined) payload.featured_image = postData.featured_image;
+        if (postData.content !== undefined) payload.content = postData.content;
+        if (postData.published !== undefined) payload.published = postData.published;
+
+        const { error: dbErr } = await supabase.from('posts').update(payload).eq('id', id);
+        if (dbErr) {
+          console.warn('Supabase post update notice:', dbErr);
+          showToast(`Supabase: ${dbErr.message}`, 'error');
+        }
+      } catch (err: any) {
+        console.warn('Supabase post update catch:', err);
+      }
+    }
+
+    showToast('Article updated successfully!');
+    return { success: true, data: updatedPost };
+  };
+
+  const deletePost = async (id: string) => {
+    setBlogPosts((prev) => prev.filter((p) => p.id !== id));
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { error: dbErr } = await supabase.from('posts').delete().eq('id', id);
+        if (dbErr) {
+          console.warn('Supabase post delete notice:', dbErr);
+          showToast(`Supabase: ${dbErr.message}`, 'error');
+        }
+      } catch (err: any) {
+        console.warn('Supabase post delete catch:', err);
+      }
+    }
+
+    showToast('Article deleted from blog.', 'info');
+    return { success: true };
+  };
+
+  const refreshPosts = async () => {
+    if (!isSupabaseConfigured() || !supabase) return;
+    try {
+      const { data: dbPosts, error: postErr } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!postErr && dbPosts) {
+        const mapped: BlogPost[] = dbPosts.map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          slug: p.slug,
+          excerpt: p.excerpt || '',
+          content: p.content || '',
+          category: 'Guides',
+          date: p.created_at
+            ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : 'Recent',
+          author: 'Joshua Ajayi',
+          author_id: p.author_id,
+          readTime: '5 min read',
+          image:
+            p.featured_image ||
+            'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1000&auto=format&fit=crop',
+          featured_image: p.featured_image,
+          published: p.published !== false,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+          relatedProductIds: [],
+        }));
+        setBlogPosts(mapped);
+        showToast('Blog articles refreshed from Supabase!', 'success');
+      }
+    } catch (err) {
+      console.warn('Refresh posts error:', err);
+    }
+  };
+
   // Reviews
   const addReview = (reviewData: Omit<Review, 'id' | 'date'>) => {
     const newRev: Review = {
@@ -1417,6 +1725,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setSelectedServiceId,
         selectedBlogPostId,
         setSelectedBlogPostId,
+        selectedBlogSlug,
+        setSelectedBlogSlug,
         selectedCategorySlug,
         setSelectedCategorySlug,
         navigationState,
@@ -1440,6 +1750,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         services,
         projects,
         blogPosts,
+        createPost,
+        updatePost,
+        deletePost,
+        refreshPosts,
         reviews,
         faqs,
         storeSettings,

@@ -35,8 +35,10 @@ import {
   Info,
   Sliders,
   X,
+  BookOpen,
 } from 'lucide-react';
 import { Product, ProductCategory, Category } from '../types';
+import { AdminBlogManagement } from '../components/AdminBlogManagement';
 import {
   isSupabaseConfigured,
   getSupabaseConfigStatus,
@@ -52,6 +54,7 @@ type AdminTab =
   | 'products'
   | 'categories'
   | 'gallery'
+  | 'blog'
   | 'orders'
   | 'services'
   | 'settings'
@@ -63,6 +66,7 @@ export const AdminDashboardView: React.FC = () => {
     categories,
     orders,
     serviceRequests,
+    blogPosts,
     storeSettings,
     formatNaira,
     addProduct,
@@ -681,6 +685,25 @@ create policy "Allow all modifications on product_gallery" on public.product_gal
                 <Sparkles className="w-3.5 h-3.5 text-amber-400 hidden md:block" />
               </button>
 
+              {/* 5. Blog Posts */}
+              <button
+                id="tab-blog-btn"
+                onClick={() => setActiveTab('blog')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                  activeTab === 'blog'
+                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span>Blog Posts</span>
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${activeTab === 'blog' ? 'bg-slate-950/30 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400'}`}>
+                  {supabaseCounts?.postsCount ?? blogPosts.length}
+                </span>
+              </button>
+
               {/* 5. Service Requests */}
               <button
                 id="tab-services-btn"
@@ -932,6 +955,19 @@ create policy "Allow all modifications on product_gallery" on public.product_gal
                       <div>
                         <div className="text-xs font-bold text-white">Product Gallery</div>
                         <div className="text-[11px] text-slate-400">Attach multi-image URLs</div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveTab('blog')}
+                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors flex items-start gap-3 group"
+                    >
+                      <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
+                        <BookOpen className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white">Blog & Articles</div>
+                        <div className="text-[11px] text-slate-400">SEO guides & public.posts</div>
                       </div>
                     </button>
 
@@ -1655,6 +1691,11 @@ https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=800`}
               </div>
             </div>
           )}
+
+          {/* ========================================================================= */}
+          {/* BLOG & ARTICLE MANAGEMENT TAB */}
+          {/* ========================================================================= */}
+          {activeTab === 'blog' && <AdminBlogManagement />}
 
           {/* ========================================================================= */}
           {/* 7. SUPABASE DB & SYNC TAB */}

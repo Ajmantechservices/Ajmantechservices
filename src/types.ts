@@ -192,13 +192,18 @@ export interface BlogPost {
   title: string;
   slug: string;
   excerpt: string;
-  content: string[];
-  category: string;
-  date: string;
-  author: string;
-  readTime: string;
-  image: string;
-  relatedProductIds: string[];
+  content: string | string[];
+  category?: string;
+  date?: string;
+  author?: string;
+  author_id?: string;
+  readTime?: string;
+  image?: string;
+  featured_image?: string;
+  published?: boolean;
+  relatedProductIds?: string[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Review {

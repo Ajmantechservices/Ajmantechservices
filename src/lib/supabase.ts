@@ -346,24 +346,102 @@ export interface SupabaseDashboardCounts {
   ordersCount: number;
 }
 
+export interface SupabaseDashboardCounts {
+  productsCount: number;
+  categoriesCount: number;
+  serviceRequestsCount: number;
+  ordersCount: number;
+  postsCount?: number;
+}
+
+/**
+ * Fetch all posts from Supabase public.posts table
+ */
+export async function fetchSupabasePosts() {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  return await supabase.from('posts').select('*').order('created_at', { ascending: false });
+}
+
+/**
+ * Insert a new post directly into public.posts
+ */
+export async function createSupabasePost(postData: {
+  title: string;
+  slug: string;
+  excerpt?: string;
+  featured_image?: string;
+  content: string;
+  published?: boolean;
+}) {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  return await supabase
+    .from('posts')
+    .insert({
+      title: postData.title,
+      slug: postData.slug,
+      excerpt: postData.excerpt || null,
+      featured_image: postData.featured_image || null,
+      content: postData.content,
+      published: postData.published ?? false,
+    })
+    .select()
+    .single();
+}
+
+/**
+ * Update an existing post directly in public.posts
+ */
+export async function updateSupabasePost(
+  id: string,
+  postData: {
+    title?: string;
+    slug?: string;
+    excerpt?: string;
+    featured_image?: string;
+    content?: string;
+    published?: boolean;
+  }
+) {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  return await supabase
+    .from('posts')
+    .update({
+      ...postData,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+}
+
+/**
+ * Delete a post directly from public.posts
+ */
+export async function deleteSupabasePost(id: string) {
+  if (!supabase || !isSupabaseConfigured()) return { error: null };
+  return await supabase.from('posts').delete().eq('id', id);
+}
+
 /**
  * Fetch exact table counts directly from Supabase tables:
- * products, categories, service_requests, and orders
+ * products, categories, service_requests, orders, and posts
  */
 export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCounts | null> {
   if (!supabase || !isSupabaseConfigured()) return null;
 
   try {
     const [
-      { count: prodCount, error: prodErr },
-      { count: catCount, error: catErr },
-      { count: srvCount, error: srvErr },
-      { count: ordCount, error: ordErr },
+      { count: prodCount },
+      { count: catCount },
+      { count: srvCount },
+      { count: ordCount },
+      { count: postsCount },
     ] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('categories').select('*', { count: 'exact', head: true }),
       supabase.from('service_requests').select('*', { count: 'exact', head: true }),
       supabase.from('orders').select('*', { count: 'exact', head: true }),
+      supabase.from('posts').select('*', { count: 'exact', head: true }),
     ]);
 
     return {
@@ -371,6 +449,7 @@ export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCount
       categoriesCount: typeof catCount === 'number' ? catCount : 0,
       serviceRequestsCount: typeof srvCount === 'number' ? srvCount : 0,
       ordersCount: typeof ordCount === 'number' ? ordCount : 0,
+      postsCount: typeof postsCount === 'number' ? postsCount : 0,
     };
   } catch (err) {
     console.warn('Supabase counts query error:', err);

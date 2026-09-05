@@ -1,6 +1,6 @@
 {
   "name": "AjmanTech Services",
-  "description": "Premium Nigerian electrical & lighting e-commerce store and professional electrical installation services.",
+  "description": "Premium Nigerian electrical & lighting e-commerce store, solar inverter installations, and technical engineering blog with admin content management.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
