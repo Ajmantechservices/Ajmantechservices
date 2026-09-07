@@ -2,24 +2,24 @@ import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { fetchSupabasePostBySlug } from '@/src/lib/supabase';
 
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
-const POSTS: Record<
-  string,
-  {
-    title: string;
-    excerpt: string;
-    content: string;
-    category: string;
-    date: string;
-    readTime: string;
-    image: string;
-    author: string;
-  }
-> = {
+interface ArticleData {
+  title: string;
+  excerpt: string;
+  content: string;
+  category: string;
+  date: string;
+  readTime: string;
+  image: string;
+  author: string;
+}
+
+const POSTS: Record<string, ArticleData> = {
   'how-to-choose-solar-inverter-battery-size-nigeria': {
     title: 'How to Choose the Right Solar Inverter & Battery Size for Nigerian Homes',
     excerpt:
@@ -79,12 +79,51 @@ const POSTS: Record<
   },
 };
 
+async function resolveArticle(slug: string): Promise<ArticleData | null> {
+  if (POSTS[slug]) {
+    return POSTS[slug];
+  }
+
+  try {
+    const { data } = await fetchSupabasePostBySlug(slug);
+    if (data) {
+      return {
+        title: data.title,
+        excerpt: data.excerpt || '',
+        content: data.content || '',
+        category: data.category || 'Electrical & Solar Guide',
+        date: data.created_at
+          ? new Date(data.created_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
+          : 'Recent',
+        readTime: '5 min read',
+        image:
+          data.featured_image ||
+          'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1200&auto=format&fit=crop',
+        author: data.author || 'Engr. Joshua Ajayi',
+      };
+    }
+  } catch (err) {
+    console.error('Error fetching dynamic post from Supabase:', err);
+  }
+
+  return null;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const post = POSTS[slug] || {
+  const post = (await resolveArticle(slug)) || {
     title: slug.replace(/-/g, ' ').toUpperCase() + ' | AjmanTech Services',
     excerpt: 'Comprehensive electrical, solar, and lighting guide from AjmanTech Services.',
+    content: '',
+    category: 'Electrical Guide',
+    date: 'Recent',
+    readTime: '5 min read',
     image: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1200',
+    author: 'AjmanTech Services',
   };
 
   return {
@@ -107,11 +146,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
-  const post = POSTS[slug];
+  const post = await resolveArticle(slug);
 
   if (!post) {
     notFound();
   }
+
+  // Format content to support markdown images converting to responsive figures
+  const formattedContent = (post.content || '').replace(
+    /!\[(.*?)\]\((.*?)\)/g,
+    '<figure class="my-6 max-w-full"><img src="$2" alt="$1" class="rounded-lg w-full max-h-[450px] object-cover" /><figcaption class="text-sm text-center text-gray-500 mt-2">$1</figcaption></figure>'
+  );
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -161,17 +206,26 @@ export default async function BlogPostPage({ params }: Props) {
           </div>
         </header>
 
-        <div className="rounded-3xl overflow-hidden aspect-video bg-slate-900 shadow-xl">
-          <img src={post.image} alt={post.title} className="w-full h-full object-cover" />
+        {/* Featured Banner Image */}
+        <div className="rounded-3xl overflow-hidden aspect-video max-h-[480px] bg-slate-900 shadow-xl border border-slate-200">
+          <img
+            src={post.image}
+            alt={post.title}
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
         </div>
 
-        <div className="bg-amber-500/10 border-l-4 border-amber-500 rounded-r-2xl p-5 text-slate-800 text-sm font-medium">
-          {post.excerpt}
-        </div>
+        {post.excerpt && (
+          <div className="bg-amber-500/10 border-l-4 border-amber-500 rounded-r-2xl p-5 text-slate-800 text-sm font-medium">
+            {post.excerpt}
+          </div>
+        )}
 
+        {/* Article Body with Responsive Figure & In-Content Image Support */}
         <div
-          className="bg-white rounded-3xl border border-slate-200 p-8 shadow-xs prose prose-slate max-w-none text-xs sm:text-sm text-slate-700 leading-relaxed space-y-6"
-          dangerouslySetInnerHTML={{ __html: post.content }}
+          className="article-rich-content bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-xs prose prose-slate max-w-none text-xs sm:text-sm text-slate-700 leading-relaxed space-y-6 max-w-full overflow-hidden"
+          dangerouslySetInnerHTML={{ __html: formattedContent }}
         />
       </article>
     </div>

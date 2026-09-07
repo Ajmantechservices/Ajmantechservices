@@ -12,6 +12,8 @@ import {
   Trash2,
   Edit2,
   CheckCircle2,
+  CheckSquare,
+  Square,
   Clock,
   Truck,
   Settings,
@@ -74,11 +76,13 @@ export const AdminDashboardView: React.FC = () => {
     addProduct,
     updateProduct,
     deleteProduct,
+    deleteMultipleProducts,
     addCategory,
     updateCategory,
     deleteCategory,
     addGalleryImagesToProduct,
     deleteProductGalleryItem,
+    deleteMultipleProductGalleryItems,
     refreshCatalog,
     updateOrderStatus,
     updateServiceRequestStatus,
@@ -109,6 +113,82 @@ export const AdminDashboardView: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
   const [orderSearch, setOrderSearch] = useState('');
+
+  // Bulk Selection & Deletion Confirmation State
+  interface DeleteConfirmState {
+    type: 'product' | 'bulk-products' | 'gallery' | 'bulk-gallery';
+    title: string;
+    description: string;
+    product?: Product;
+    productIds?: string[];
+    galleryItem?: {
+      galleryId?: string;
+      productId: string;
+      imageUrl: string;
+    };
+    galleryItems?: {
+      galleryId?: string;
+      productId: string;
+      imageUrl: string;
+    }[];
+  }
+
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [selectedGalleryUrls, setSelectedGalleryUrls] = useState<string[]>([]);
+
+  const handleExecuteDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeletingItem(true);
+    try {
+      if (deleteConfirm.type === 'product' && deleteConfirm.product) {
+        await deleteProduct(deleteConfirm.product.id);
+        setSelectedProductIds((prev) => prev.filter((id) => id !== deleteConfirm.product!.id));
+        showToast(`Product "${deleteConfirm.product.name}" deleted from database.`, 'info');
+      } else if (deleteConfirm.type === 'bulk-products' && deleteConfirm.productIds) {
+        await deleteMultipleProducts(deleteConfirm.productIds);
+        setSelectedProductIds([]);
+        showToast(`Deleted ${deleteConfirm.productIds.length} products from database.`, 'info');
+      } else if (deleteConfirm.type === 'gallery' && deleteConfirm.galleryItem) {
+        await deleteProductGalleryItem(
+          deleteConfirm.galleryItem.galleryId || '',
+          deleteConfirm.galleryItem.productId,
+          deleteConfirm.galleryItem.imageUrl
+        );
+        setSelectedGalleryUrls((prev) => prev.filter((u) => u !== deleteConfirm.galleryItem!.imageUrl));
+        setActiveGalleryList((prev) =>
+          prev.filter(
+            (item) =>
+              item.image_url !== deleteConfirm.galleryItem!.imageUrl &&
+              item.id !== deleteConfirm.galleryItem!.galleryId
+          )
+        );
+        showToast('Gallery photo deleted from database.', 'info');
+      } else if (deleteConfirm.type === 'bulk-gallery' && deleteConfirm.galleryItems) {
+        await deleteMultipleProductGalleryItems(deleteConfirm.galleryItems);
+        const removedUrls = deleteConfirm.galleryItems.map((i) => i.imageUrl);
+        setSelectedGalleryUrls([]);
+        setActiveGalleryList((prev) => prev.filter((item) => !removedUrls.includes(item.image_url)));
+        showToast(`Removed ${deleteConfirm.galleryItems.length} photos from database.`, 'info');
+      }
+
+      // Automatically refresh data view and counts so items are removed cleanly
+      await refreshCatalog();
+      if (isSupabaseConfigured()) {
+        await loadSupabaseTableCounts();
+        if (selectedGalleryProductId) {
+          const { data } = await fetchProductGallery(selectedGalleryProductId);
+          if (data) setActiveGalleryList(data);
+        }
+      }
+      setDeleteConfirm(null);
+    } catch (err: any) {
+      showToast('Deletion failed: ' + (err?.message || 'Error occurred'), 'error');
+    } finally {
+      setIsDeletingItem(false);
+    }
+  };
 
   // -------------------------------------------------------------
   // Route Protection & Middleware
@@ -1100,16 +1180,55 @@ create policy "Allow all modifications on product_gallery" on public.product_gal
                 </button>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search products by title, slug, category, or SKU..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30"
-                />
+              {/* Search & Bulk Action Bar */}
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="product-search-input"
+                    type="text"
+                    placeholder="Search products by title, category, SKU or slug..."
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30"
+                  />
+                </div>
+
+                {/* Bulk Actions Banner if items are selected */}
+                {selectedProductIds.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-rose-950/40 border border-rose-800/60 rounded-xl animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4 text-rose-400" />
+                      <span className="text-xs font-semibold text-white">
+                        {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'} selected for deletion
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProductIds([])}
+                        className="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-800/80 transition-colors"
+                      >
+                        Cancel Selection
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteConfirm({
+                            type: 'bulk-products',
+                            title: 'Are you sure you want to delete these items?',
+                            description: `This will execute a Supabase DELETE query for ${selectedProductIds.length} selected products in public.products, removing them and their attached gallery photos permanently.`,
+                            productIds: [...selectedProductIds],
+                          });
+                        }}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Selected ({selectedProductIds.length})</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Products Table */}
@@ -1118,6 +1237,46 @@ create policy "Allow all modifications on product_gallery" on public.product_gal
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-800/80 text-slate-300 font-bold uppercase tracking-wider text-[10px] border-b border-slate-800">
                       <tr>
+                        <th className="py-3 px-3 w-10 text-center">
+                          {(() => {
+                            const filtered = products.filter(
+                              (p) =>
+                                p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                                (p.slug || '').toLowerCase().includes(productSearch.toLowerCase()) ||
+                                p.category.toLowerCase().includes(productSearch.toLowerCase()) ||
+                                p.sku.toLowerCase().includes(productSearch.toLowerCase())
+                            );
+                            const allSelected =
+                              filtered.length > 0 &&
+                              filtered.every((p) => selectedProductIds.includes(p.id));
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (allSelected) {
+                                    const filteredIds = filtered.map((p) => p.id);
+                                    setSelectedProductIds((prev) =>
+                                      prev.filter((id) => !filteredIds.includes(id))
+                                    );
+                                  } else {
+                                    const filteredIds = filtered.map((p) => p.id);
+                                    setSelectedProductIds((prev) =>
+                                      Array.from(new Set([...prev, ...filteredIds]))
+                                    );
+                                  }
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-white"
+                                title={allSelected ? 'Deselect all visible' : 'Select all visible'}
+                              >
+                                {allSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-amber-400" />
+                                ) : (
+                                  <Square className="w-4 h-4" />
+                                )}
+                              </button>
+                            );
+                          })()}
+                        </th>
                         <th className="py-3 px-4">Product Details</th>
                         <th className="py-3 px-4">Slug</th>
                         <th className="py-3 px-4">Category</th>
@@ -1135,8 +1294,31 @@ create policy "Allow all modifications on product_gallery" on public.product_gal
                             p.category.toLowerCase().includes(productSearch.toLowerCase()) ||
                             p.sku.toLowerCase().includes(productSearch.toLowerCase())
                         )
-                        .map((prod) => (
-                          <tr key={prod.id} className="hover:bg-slate-800/40 transition-colors">
+                        .map((prod) => {
+                          const isSelected = selectedProductIds.includes(prod.id);
+                          return (
+                          <tr key={prod.id} className={`hover:bg-slate-800/40 transition-colors ${isSelected ? 'bg-slate-800/30' : ''}`}>
+                            {/* Checkbox */}
+                            <td className="py-3.5 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedProductIds((prev) =>
+                                    prev.includes(prod.id)
+                                      ? prev.filter((id) => id !== prod.id)
+                                      : [...prev, prod.id]
+                                  );
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-white"
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-amber-400" />
+                                ) : (
+                                  <Square className="w-4 h-4" />
+                                )}
+                              </button>
+                            </td>
+
                             {/* Product Info */}
                             <td className="py-3.5 px-4">
                               <div className="flex items-center gap-3">
@@ -1211,19 +1393,24 @@ create policy "Allow all modifications on product_gallery" on public.product_gal
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (confirm(`Are you sure you want to delete product "${prod.name}"?`)) {
-                                      deleteProduct(prod.id);
-                                    }
+                                    setDeleteConfirm({
+                                      type: 'product',
+                                      title: 'Are you sure you want to delete this item?',
+                                      description: `This action will execute a Supabase DELETE query on public.products for product_id "${prod.id}", removing "${prod.name}" and all associated gallery photos permanently.`,
+                                      product: prod,
+                                    });
                                   }}
-                                  className="p-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 hover:text-rose-200 transition-colors"
+                                  className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-400 hover:text-rose-200 transition-colors flex items-center gap-1 text-xs"
                                   title="Delete Product"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline font-semibold">Delete</span>
                                 </button>
                               </div>
                             </td>
                           </tr>
-                        ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1546,52 +1733,169 @@ https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=800`}
                 </form>
               </div>
 
-              {/* Current Attached Images Preview */}
+              {/* Current Attached Images Preview & Bulk Photo Manager */}
               {currentGalleryProduct && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                      Attached Images ({currentGalleryProduct.images?.length || 0})
-                    </h3>
-                    <span className="text-xs text-slate-400">Click delete to remove any photo from catalog</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-900 border border-slate-800 rounded-2xl">
+                    <div>
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-purple-400" />
+                        <span>Attached Photos ({currentGalleryProduct.images?.length || 0})</span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Select photos to bulk delete or click the Delete button on any card
+                      </p>
+                    </div>
+
+                    {currentGalleryProduct.images && currentGalleryProduct.images.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedGalleryUrls.length === currentGalleryProduct.images.length) {
+                              setSelectedGalleryUrls([]);
+                            } else {
+                              setSelectedGalleryUrls([...currentGalleryProduct.images]);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                        >
+                          {selectedGalleryUrls.length === currentGalleryProduct.images.length ? (
+                            <>
+                              <Square className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Deselect All</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckSquare className="w-3.5 h-3.5 text-purple-400" />
+                              <span>Select All Photos</span>
+                            </>
+                          )}
+                        </button>
+
+                        {selectedGalleryUrls.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const targetItems = selectedGalleryUrls.map((url) => {
+                                const galleryRow = activeGalleryList.find((g) => g.image_url === url);
+                                return {
+                                  galleryId: galleryRow?.id,
+                                  productId: currentGalleryProduct.id,
+                                  imageUrl: url,
+                                };
+                              });
+
+                              setDeleteConfirm({
+                                type: 'bulk-gallery',
+                                title: 'Are you sure you want to delete these items?',
+                                description: `This will execute a Supabase DELETE query for ${selectedGalleryUrls.length} selected gallery photos in public.product_gallery and remove them from product "${currentGalleryProduct.name}".`,
+                                galleryItems: targetItems,
+                              });
+                            }}
+                            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/20 flex items-center gap-1.5 transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete Selected Photos ({selectedGalleryUrls.length})</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {currentGalleryProduct.images?.map((imgUrl, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden group relative"
-                      >
-                        <div className="aspect-square bg-slate-800 relative">
-                          <img
-                            src={imgUrl}
-                            alt={`${currentGalleryProduct.name} view ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                            {idx === 0 ? (
-                              <span className="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-bold text-[10px] uppercase tracking-wider">
-                                Primary
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-slate-200 font-mono text-[10px] border border-slate-700">
-                                #{idx}
-                              </span>
+                    {currentGalleryProduct.images?.map((imgUrl, idx) => {
+                      const galleryRow = activeGalleryList.find((g) => g.image_url === imgUrl);
+                      const isSelected = selectedGalleryUrls.includes(imgUrl);
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`bg-slate-900 border rounded-2xl overflow-hidden group relative transition-all ${
+                            isSelected ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-slate-800'
+                          }`}
+                        >
+                          <div className="aspect-square bg-slate-800 relative">
+                            <img
+                              src={imgUrl}
+                              alt={`${currentGalleryProduct.name} view ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+
+                            {/* Checkbox */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedGalleryUrls((prev) =>
+                                  prev.includes(imgUrl)
+                                    ? prev.filter((u) => u !== imgUrl)
+                                    : [...prev, imgUrl]
+                                );
+                              }}
+                              className={`absolute top-2 left-2 p-1.5 rounded-lg transition-all ${
+                                isSelected
+                                  ? 'bg-purple-600 text-white shadow-md'
+                                  : 'bg-slate-900/80 backdrop-blur-sm text-slate-300 hover:bg-slate-800'
+                              }`}
+                              title={isSelected ? 'Deselect photo' : 'Select photo'}
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+
+                            {/* Primary Tag or Index */}
+                            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 pointer-events-none">
+                              {idx === 0 ? (
+                                <span className="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-bold text-[10px] uppercase tracking-wider shadow-sm">
+                                  Primary
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-slate-200 font-mono text-[10px] border border-slate-700">
+                                  #{idx}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Delete Button with Confirmation Modal */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteConfirm({
+                                  type: 'gallery',
+                                  title: 'Are you sure you want to delete this item?',
+                                  description: `This will execute a Supabase DELETE query for gallery item ${
+                                    galleryRow?.id ? `ID: ${galleryRow.id}` : ''
+                                  } on public.product_gallery and permanently remove this photo from "${currentGalleryProduct.name}".`,
+                                  galleryItem: {
+                                    galleryId: galleryRow?.id,
+                                    productId: currentGalleryProduct.id,
+                                    imageUrl: imgUrl,
+                                  },
+                                });
+                              }}
+                              className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-rose-950/90 hover:bg-rose-600 text-rose-300 hover:text-white transition-all shadow-md flex items-center gap-1 text-xs font-semibold"
+                              title="Delete Photo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span className="text-[11px]">Delete</span>
+                            </button>
+                          </div>
+                          <div className="p-2.5 space-y-1">
+                            <div className="text-[10px] font-mono text-slate-400 truncate" title={imgUrl}>
+                              {imgUrl}
+                            </div>
+                            {galleryRow?.caption && (
+                              <div className="text-[11px] text-slate-300 truncate">
+                                {galleryRow.caption}
+                              </div>
                             )}
                           </div>
-                          <button
-                            onClick={() => handleDeleteGalleryImage(imgUrl)}
-                            className="absolute top-2 right-2 p-1.5 rounded-lg bg-rose-950/80 text-rose-300 hover:bg-rose-900 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                            title="Delete Image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                        <div className="p-2.5">
-                          <div className="text-[10px] font-mono text-slate-400 truncate">{imgUrl}</div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2082,6 +2386,142 @@ https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=800`}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ========================================================================= */}
+      {/* DELETE CONFIRMATION MODAL ("Are you sure you want to delete this item?") */}
+      {/* ========================================================================= */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-scale-up">
+            {/* Header with Danger Icon */}
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white tracking-tight">
+                  {deleteConfirm.title}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                  {deleteConfirm.description}
+                </p>
+              </div>
+            </div>
+
+            {/* Single Product Preview */}
+            {deleteConfirm.product && (
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center gap-3.5">
+                <img
+                  src={deleteConfirm.product.images[0]}
+                  alt={deleteConfirm.product.name}
+                  className="w-14 h-14 rounded-xl object-cover bg-slate-800 border border-slate-700 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-bold text-white text-xs truncate">{deleteConfirm.product.name}</div>
+                  <div className="text-[11px] text-amber-400 font-mono mt-0.5">
+                    {formatNaira(deleteConfirm.product.price)} • {deleteConfirm.product.category}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                    Product ID: <code className="text-slate-300">{deleteConfirm.product.id}</code>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Single Gallery Image Preview */}
+            {deleteConfirm.galleryItem && (
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center gap-3.5">
+                <img
+                  src={deleteConfirm.galleryItem.imageUrl}
+                  alt="Gallery item preview"
+                  className="w-16 h-16 rounded-xl object-cover bg-slate-800 border border-slate-700 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-white">Target Photo URL:</div>
+                  <div className="text-[11px] text-slate-400 font-mono truncate max-w-xs mt-0.5" title={deleteConfirm.galleryItem.imageUrl}>
+                    {deleteConfirm.galleryItem.imageUrl}
+                  </div>
+                  {deleteConfirm.galleryItem.galleryId && (
+                    <div className="text-[10px] text-purple-400 font-mono mt-1">
+                      gallery_id: <code className="text-purple-300">{deleteConfirm.galleryItem.galleryId}</code>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Bulk Products Preview */}
+            {deleteConfirm.productIds && (
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+                <div className="text-xs text-slate-300">
+                  You are about to delete <span className="font-bold text-rose-400">{deleteConfirm.productIds.length}</span> selected products from inventory.
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 max-h-20 overflow-y-auto space-y-0.5">
+                  {deleteConfirm.productIds.map((id) => (
+                    <div key={id}>• {id}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bulk Gallery Photos Preview */}
+            {deleteConfirm.galleryItems && (
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+                <div className="text-xs text-slate-300">
+                  You are about to delete <span className="font-bold text-rose-400">{deleteConfirm.galleryItems.length}</span> photos from the product gallery.
+                </div>
+                <div className="flex gap-2 overflow-x-auto py-1">
+                  {deleteConfirm.galleryItems.map((item, i) => (
+                    <img
+                      key={i}
+                      src={item.imageUrl}
+                      alt="Thumbnail"
+                      className="w-12 h-12 rounded-lg object-cover bg-slate-800 shrink-0 border border-slate-700"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Supabase Action Note */}
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center gap-2">
+              <Database className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>
+                Executes a Supabase DELETE query on database and automatically refreshes all counts.
+              </span>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingItem}
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingItem}
+                onClick={handleExecuteDelete}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 flex items-center gap-2 transition-all disabled:opacity-50"
+              >
+                {isDeletingItem ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Executing Supabase DELETE...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Permanently</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

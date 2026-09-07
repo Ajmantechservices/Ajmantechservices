@@ -284,6 +284,42 @@ export async function removeProductGalleryImage(galleryId: string) {
 }
 
 /**
+ * Bulk remove multiple image entries from product gallery by IDs
+ */
+export async function removeMultipleProductGalleryImages(galleryIds: string[]) {
+  if (!supabase || !isSupabaseConfigured() || galleryIds.length === 0) return { data: null, error: null };
+  return await supabase.from('product_gallery').delete().in('id', galleryIds);
+}
+
+/**
+ * Bulk remove multiple image entries from product gallery by image URLs
+ */
+export async function removeProductGalleryImagesByUrl(productId: string, imageUrls: string[]) {
+  if (!supabase || !isSupabaseConfigured() || imageUrls.length === 0) return { data: null, error: null };
+  return await supabase
+    .from('product_gallery')
+    .delete()
+    .eq('product_id', productId)
+    .in('image_url', imageUrls);
+}
+
+/**
+ * Delete a single product from Supabase products table
+ */
+export async function deleteSupabaseProduct(productId: string) {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  return await supabase.from('products').delete().eq('id', productId);
+}
+
+/**
+ * Bulk delete multiple products from Supabase products table
+ */
+export async function deleteSupabaseProducts(productIds: string[]) {
+  if (!supabase || !isSupabaseConfigured() || productIds.length === 0) return { data: null, error: null };
+  return await supabase.from('products').delete().in('id', productIds);
+}
+
+/**
  * Check current Supabase auth session & verify if user has admin role
  */
 export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user: User | null; email?: string }> {
@@ -342,6 +378,14 @@ export interface SupabaseDashboardCounts {
 export async function fetchSupabasePosts() {
   if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
   return await supabase.from('posts').select('*').order('created_at', { ascending: false });
+}
+
+/**
+ * Fetch a single post by its slug from public.posts
+ */
+export async function fetchSupabasePostBySlug(slug: string) {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  return await supabase.from('posts').select('*').eq('slug', slug).maybeSingle();
 }
 
 /**

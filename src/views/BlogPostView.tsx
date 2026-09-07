@@ -189,38 +189,41 @@ export const BlogPostView: React.FC = () => {
       })
     : post.date || 'Recent';
 
-  // Render article body supporting both raw HTML and Markdown formatting
+  // Render article body supporting raw HTML, <figure> image elements, and Markdown syntax
   const renderContent = () => {
+    let rawContent = '';
     if (typeof post.content === 'string') {
-      const isHtml = /<[a-z][\s\S]*>/i.test(post.content);
-      if (isHtml) {
-        return (
-          <div
-            className="article-rich-content leading-relaxed space-y-4"
-            dangerouslySetInnerHTML={{ __html: post.content }}
-          />
-        );
-      }
+      rawContent = post.content;
+    } else if (Array.isArray(post.content)) {
+      rawContent = post.content.join('\n\n');
+    }
+
+    if (!rawContent) return null;
+
+    // Convert markdown images ![alt](url) to the required figure structure if present
+    const processedHtml = rawContent.replace(
+      /!\[(.*?)\]\((.*?)\)/g,
+      '<figure class="my-6 max-w-full"><img src="$2" alt="$1" class="rounded-lg w-full max-h-[450px] object-cover" /><figcaption class="text-sm text-center text-gray-500 mt-2">$1</figcaption></figure>'
+    );
+
+    const isHtml = /<[a-z][\s\S]*>/i.test(processedHtml);
+
+    if (isHtml) {
       return (
-        <div className="space-y-4 text-slate-700 leading-relaxed">
-          {post.content.split('\n\n').map((para, idx) => (
-            <p key={idx}>{para}</p>
-          ))}
-        </div>
+        <div
+          className="article-rich-content leading-relaxed space-y-4 max-w-full overflow-hidden"
+          dangerouslySetInnerHTML={{ __html: processedHtml }}
+        />
       );
     }
 
-    if (Array.isArray(post.content)) {
-      return (
-        <div className="space-y-4 text-slate-700 leading-relaxed">
-          {post.content.map((para, idx) => (
-            <p key={idx}>{para}</p>
-          ))}
-        </div>
-      );
-    }
-
-    return null;
+    return (
+      <div className="space-y-4 text-slate-700 leading-relaxed max-w-full overflow-hidden">
+        {processedHtml.split('\n\n').map((para, idx) => (
+          <p key={idx}>{para}</p>
+        ))}
+      </div>
+    );
   };
 
   return (

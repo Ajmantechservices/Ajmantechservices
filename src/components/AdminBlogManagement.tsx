@@ -35,6 +35,81 @@ export const AdminBlogManagement: React.FC = () => {
   const [showEditorModal, setShowEditorModal] = useState(false);
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
 
+  // In-Content Image Insertion Modal State
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [inContentImageUrl, setInContentImageUrl] = useState('');
+  const [inContentImageAlt, setInContentImageAlt] = useState('');
+  const [inContentImageCaption, setInContentImageCaption] = useState('');
+
+  // Curated Unsplash Presets for Electrical & Solar Posts
+  const IN_CONTENT_IMAGE_PRESETS = [
+    {
+      name: 'Solar Panels',
+      url: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1200&auto=format&fit=crop',
+      alt: 'Monocrystalline solar panel array installation',
+      caption: 'Figure 1: Monocrystalline solar PV panels angled for peak solar irradiance in Nigeria.',
+    },
+    {
+      name: 'Hybrid Inverter',
+      url: 'https://images.unsplash.com/photo-1548611716-ad4b97779f6e?q=80&w=1200&auto=format&fit=crop',
+      alt: 'Pure sine wave hybrid inverter system',
+      caption: 'Figure 2: Pure sine wave hybrid solar inverter connected to dual MPPT trackers.',
+    },
+    {
+      name: 'Lithium Battery',
+      url: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=1200&auto=format&fit=crop',
+      alt: 'LiFePO4 lithium battery energy storage rack',
+      caption: 'Figure 3: 48V 200Ah Lithium Iron Phosphate (LiFePO4) energy storage bank.',
+    },
+    {
+      name: 'Luxury Chandelier',
+      url: 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=1200&auto=format&fit=crop',
+      alt: 'Precision ceiling chandelier installation',
+      caption: 'Figure 4: Reinforced structural ceiling support for multi-tier crystal chandeliers.',
+    },
+    {
+      name: 'Industrial DB & SPD',
+      url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=1200&auto=format&fit=crop',
+      alt: 'Surge protector device and earthing bar in main distribution board',
+      caption: 'Figure 5: Type-2 SPD surge arrestor and copper earthing terminal on distribution board.',
+    },
+  ];
+
+  const handleInsertInContentImage = () => {
+    if (!inContentImageUrl.trim()) {
+      showToast('Please provide an image URL.', 'error');
+      return;
+    }
+
+    const altText = inContentImageAlt.trim() || 'AjmanTech installation';
+    const captionText = inContentImageCaption.trim();
+
+    // Standardized figure HTML format requested
+    const figureSnippet = `\n<figure class="my-6"><img src="${inContentImageUrl.trim()}" alt="${altText}" class="rounded-lg w-full max-h-[450px] object-cover" />${
+      captionText ? `<figcaption class="text-sm text-center text-gray-500 mt-2">${captionText}</figcaption>` : ''
+    }</figure>\n`;
+
+    const textarea = document.getElementById('post-content-textarea') as HTMLTextAreaElement | null;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const updated = content.substring(0, start) + figureSnippet + content.substring(end);
+      setContent(updated);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + figureSnippet.length, start + figureSnippet.length);
+      }, 50);
+    } else {
+      setContent((prev) => prev + figureSnippet);
+    }
+
+    setShowImageModal(false);
+    setInContentImageUrl('');
+    setInContentImageAlt('');
+    setInContentImageCaption('');
+    showToast('In-content image figure added to article body!', 'success');
+  };
+
   // Form Fields
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
@@ -537,11 +612,11 @@ export const AdminBlogManagement: React.FC = () => {
                 />
               </div>
 
-              {/* 3. Featured Image URL with Live Preview */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
+              {/* 3. Featured Banner Image URL with Live Thumbnail Header Preview */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-300">
-                    Featured Image URL
+                    Featured Banner Image URL (Article Header)
                   </label>
                   {/* Quick Preset Buttons */}
                   <div className="flex items-center gap-1.5 text-[11px]">
@@ -556,6 +631,18 @@ export const AdminBlogManagement: React.FC = () => {
                       className="text-amber-400 hover:underline cursor-pointer"
                     >
                       Solar
+                    </button>
+                    <span className="text-slate-600">•</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFeaturedImage(
+                          'https://images.unsplash.com/photo-1548611716-ad4b97779f6e?q=80&w=1200&auto=format&fit=crop'
+                        )
+                      }
+                      className="text-amber-400 hover:underline cursor-pointer"
+                    >
+                      Inverter
                     </button>
                     <span className="text-slate-600">•</span>
                     <button
@@ -584,32 +671,50 @@ export const AdminBlogManagement: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex gap-3 items-center">
-                  <div className="relative flex-1">
-                    <ImageIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      id="post-image-input"
-                      type="url"
-                      placeholder="https://images.unsplash.com/..."
-                      value={featuredImage}
-                      onChange={(e) => setFeaturedImage(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
+                <div className="relative">
+                  <ImageIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="post-image-input"
+                    type="url"
+                    placeholder="https://images.unsplash.com/photo-... or custom image URL"
+                    value={featuredImage}
+                    onChange={(e) => setFeaturedImage(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
 
-                  {featuredImage && (
-                    <div className="w-12 h-9 rounded-lg overflow-hidden border border-slate-700 shrink-0 bg-slate-800">
+                {/* Live Header Banner Thumbnail Preview */}
+                {featuredImage ? (
+                  <div className="rounded-xl overflow-hidden border border-slate-700 bg-slate-950 relative">
+                    <div className="relative aspect-[21/9] sm:aspect-[24/9] w-full overflow-hidden">
                       <img
                         src={featuredImage}
-                        alt="Preview"
+                        alt="Featured Header Preview"
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
+                          (e.target as HTMLElement).style.opacity = '0.3';
                         }}
                       />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex flex-col justify-end p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold">
+                            Live Header Banner Preview
+                          </span>
+                          <span className="text-[10px] text-slate-300 font-mono">
+                            {slug ? `/blog/${slug}` : '/blog/post-slug'}
+                          </span>
+                        </div>
+                        <h4 className="text-white text-sm font-bold truncate">
+                          {title || 'Your Article Title Will Appear Here'}
+                        </h4>
+                      </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border border-dashed border-slate-700 bg-slate-800/40 text-center text-slate-500 text-xs">
+                    No featured banner image provided. Click a preset above or enter a URL to see live article header preview.
+                  </div>
+                )}
               </div>
 
               {/* 4. Content Editor (HTML / Markdown Supported) */}
@@ -650,34 +755,48 @@ export const AdminBlogManagement: React.FC = () => {
 
                 {activeEditorTab === 'edit' ? (
                   <div className="space-y-2">
-                    {/* Quick Formatting Helpers */}
-                    <div className="flex items-center flex-wrap gap-1 bg-slate-800/60 p-1.5 rounded-lg border border-slate-700/60 text-[11px] text-slate-300">
+                    {/* Quick Formatting Helpers & Media Tooling */}
+                    <div className="flex items-center flex-wrap gap-1.5 bg-slate-800/60 p-1.5 rounded-lg border border-slate-700/60 text-[11px] text-slate-300">
                       <span className="text-slate-500 px-1 font-mono">Insert:</span>
+
+                      {/* In-Content Image Insertion Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowImageModal(true)}
+                        className="px-2.5 py-1 rounded-md bg-purple-950/60 hover:bg-purple-900 text-purple-300 border border-purple-700/60 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                        title="Insert formatted in-content image with figure and caption"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Insert Image URL</span>
+                      </button>
+
+                      <span className="text-slate-600">|</span>
+
                       <button
                         type="button"
                         onClick={() => insertTag('<h2>', '</h2>')}
-                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono"
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono cursor-pointer"
                       >
                         &lt;h2&gt;
                       </button>
                       <button
                         type="button"
                         onClick={() => insertTag('<p>', '</p>')}
-                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono"
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono cursor-pointer"
                       >
                         &lt;p&gt;
                       </button>
                       <button
                         type="button"
                         onClick={() => insertTag('<ul>\n  <li>', '</li>\n</ul>')}
-                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono"
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono cursor-pointer"
                       >
                         &lt;ul&gt;
                       </button>
                       <button
                         type="button"
                         onClick={() => insertTag('<strong>', '</strong>')}
-                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono"
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono cursor-pointer"
                       >
                         &lt;strong&gt;
                       </button>
@@ -685,11 +804,11 @@ export const AdminBlogManagement: React.FC = () => {
                         type="button"
                         onClick={() =>
                           insertTag(
-                            '<div className="p-4 bg-amber-500/10 border-l-4 border-amber-500 rounded-r-lg my-4 text-amber-200">',
+                            '<div class="p-4 bg-amber-500/10 border-l-4 border-amber-500 rounded-r-lg my-4 text-amber-200">',
                             '</div>'
                           )
                         }
-                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-mono"
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-mono cursor-pointer"
                       >
                         Tip Callout
                       </button>
@@ -782,6 +901,150 @@ export const AdminBlogManagement: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ========================================================================= */}
+      {/* IN-CONTENT IMAGE INSERTION MODAL */}
+      {/* Formats cleanly as: */}
+      {/* <figure class="my-6"><img src="IMAGE_URL" alt="Description" class="rounded-lg w-full max-h-[450px] object-cover" /><figcaption class="text-sm text-center text-gray-500 mt-2">Caption text</figcaption></figure> */}
+      {/* ========================================================================= */}
+      {showImageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <ImageIcon className="w-4 h-4 text-purple-400" />
+                <span>Insert In-Content Article Image</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImageModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Presets Selection */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                Quick Presets (Solar & Electrical Library)
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {IN_CONTENT_IMAGE_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setInContentImageUrl(preset.url);
+                      setInContentImageAlt(preset.alt);
+                      setInContentImageCaption(preset.caption);
+                    }}
+                    className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-left transition-colors flex items-center gap-2 group cursor-pointer"
+                  >
+                    <img
+                      src={preset.url}
+                      alt={preset.name}
+                      className="w-8 h-8 rounded-lg object-cover bg-slate-900 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-200 group-hover:text-amber-400 truncate">
+                        {preset.name}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Form Inputs */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Image URL *
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://images.unsplash.com/..."
+                  value={inContentImageUrl}
+                  onChange={(e) => setInContentImageUrl(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Alt Text (Accessibility & SEO)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Solar inverter installation in Lagos"
+                    value={inContentImageAlt}
+                    onChange={(e) => setInContentImageAlt(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Caption Text
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Pure sine wave inverter output testing"
+                    value={inContentImageCaption}
+                    onChange={(e) => setInContentImageCaption(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Live Figure Preview */}
+            {inContentImageUrl && (
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Figure Output Preview
+                </div>
+                <figure className="my-2 max-w-full">
+                  <img
+                    src={inContentImageUrl}
+                    alt={inContentImageAlt || 'Preview'}
+                    className="rounded-lg w-full max-h-[180px] object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.opacity = '0.4';
+                    }}
+                  />
+                  {inContentImageCaption && (
+                    <figcaption className="text-xs text-center text-slate-400 mt-2 italic">
+                      {inContentImageCaption}
+                    </figcaption>
+                  )}
+                </figure>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowImageModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleInsertInContentImage}
+                disabled={!inContentImageUrl.trim()}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Insert Figure into Body</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

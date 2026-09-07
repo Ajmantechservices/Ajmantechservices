@@ -166,6 +166,7 @@ interface StoreContextType {
   addProduct: (product: Omit<Product, 'id'>) => Promise<Product> | Product;
   updateProduct: (product: Product) => Promise<void> | void;
   deleteProduct: (id: string) => Promise<void> | void;
+  deleteMultipleProducts: (ids: string[]) => Promise<void>;
 
   // Category Admin Operations
   addCategory: (category: Omit<Category, 'id'>) => Promise<Category> | Category;
@@ -175,6 +176,7 @@ interface StoreContextType {
   // Gallery Operations
   addGalleryImagesToProduct: (productId: string, imageUrls: string[], caption?: string, displayOrder?: number) => Promise<boolean>;
   deleteProductGalleryItem: (galleryId: string, productId: string, imageUrl?: string) => Promise<boolean>;
+  deleteMultipleProductGalleryItems: (items: { galleryId?: string; productId: string; imageUrl: string }[]) => Promise<boolean>;
   refreshCatalog: () => Promise<void>;
 
   // Reviews
@@ -1330,6 +1332,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (isSupabaseConfigured() && supabase) {
       try {
+        await supabase.from('product_gallery').delete().eq('product_id', id);
         await supabase.from('products').delete().eq('id', id);
       } catch (err) {
         console.warn('Supabase product delete notice:', err);
@@ -1337,6 +1340,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     showToast('Product deleted from inventory.', 'info');
+  };
+
+  const deleteMultipleProducts = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.from('product_gallery').delete().in('product_id', ids);
+        await supabase.from('products').delete().in('id', ids);
+      } catch (err) {
+        console.warn('Supabase bulk product delete notice:', err);
+      }
+    }
+
+    showToast(`Deleted ${ids.length} product(s) from inventory.`, 'info');
   };
 
   // Category CRUD
@@ -1471,6 +1490,60 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     showToast('Gallery image removed.', 'info');
+    return true;
+  };
+
+  const deleteMultipleProductGalleryItems = async (
+    items: { galleryId?: string; productId: string; imageUrl: string }[]
+  ) => {
+    if (items.length === 0) return true;
+
+    // 1. Group by product to update state
+    const productMap = new Map<string, string[]>();
+    items.forEach((item) => {
+      const existing = productMap.get(item.productId) || [];
+      existing.push(item.imageUrl);
+      productMap.set(item.productId, existing);
+    });
+
+    setProducts((prev) =>
+      prev.map((p) => {
+        const toRemove = productMap.get(p.id);
+        if (toRemove && toRemove.length > 0) {
+          return {
+            ...p,
+            images: p.images.filter((img) => !toRemove.includes(img)),
+          };
+        }
+        return p;
+      })
+    );
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const galleryIds = items.map((i) => i.galleryId).filter(Boolean) as string[];
+        if (galleryIds.length > 0) {
+          await supabase.from('product_gallery').delete().in('id', galleryIds);
+        }
+        // Also delete by image_url and product_id
+        for (const [prodId, urls] of productMap.entries()) {
+          await supabase
+            .from('product_gallery')
+            .delete()
+            .eq('product_id', prodId)
+            .in('image_url', urls);
+          const currentProd = products.find((p) => p.id === prodId);
+          if (currentProd) {
+            const remaining = currentProd.images.filter((img) => !urls.includes(img));
+            await supabase.from('products').update({ gallery: remaining }).eq('id', prodId);
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase bulk gallery delete notice:', err);
+      }
+    }
+
+    showToast(`Removed ${items.length} gallery image(s).`, 'info');
     return true;
   };
 
@@ -1833,12 +1906,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         addProduct,
         updateProduct,
         deleteProduct,
+        deleteMultipleProducts,
         addCategory,
         updateCategory,
         deleteCategory,
 
         addGalleryImagesToProduct,
         deleteProductGalleryItem,
+        deleteMultipleProductGalleryItems,
         refreshCatalog,
 
         addReview,
