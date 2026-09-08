@@ -323,6 +323,8 @@ export const AdminDashboardView: React.FC = () => {
   const [settingsAccountName, setSettingsAccountName] = useState(storeSettings.bankDetails.accountName);
   const [settingsAccountNumber, setSettingsAccountNumber] = useState(storeSettings.bankDetails.accountNumber);
   const [settingsWhatsapp, setSettingsWhatsapp] = useState(storeSettings.whatsappNumber);
+  const [settingsFacebook, setSettingsFacebook] = useState(storeSettings.socialLinks.facebook);
+  const [settingsInstagram, setSettingsInstagram] = useState(storeSettings.socialLinks.instagram);
   const [settingsFreeThreshold, setSettingsFreeThreshold] = useState(storeSettings.freeDeliveryThreshold);
 
   // Sync selectedGalleryProductId when products list loads
@@ -560,6 +562,11 @@ export const AdminDashboardView: React.FC = () => {
         bankName: settingsBankName,
         accountName: settingsAccountName,
         accountNumber: settingsAccountNumber,
+      },
+      socialLinks: {
+        ...storeSettings.socialLinks,
+        facebook: settingsFacebook,
+        instagram: settingsInstagram,
       },
     });
     showToast('Store settings updated successfully.');
@@ -2179,6 +2186,32 @@ https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=800`}
                     value={settingsAccountNumber}
                     onChange={(e) => setSettingsAccountNumber(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Facebook Page URL
+                  </label>
+                  <input
+                    type="url"
+                    value={settingsFacebook}
+                    onChange={(e) => setSettingsFacebook(e.target.value)}
+                    placeholder="https://web.facebook.com/profile.php?id=..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Instagram Profile URL
+                  </label>
+                  <input
+                    type="url"
+                    value={settingsInstagram}
+                    onChange={(e) => setSettingsInstagram(e.target.value)}
+                    placeholder="https://instagram.com/..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white"
                   />
                 </div>
 

@@ -1030,9 +1030,9 @@ export const INITIAL_FAQS: FAQItem[] = [
 export const INITIAL_STORE_SETTINGS: StoreSettings = {
   storeName: 'AjmanTech Services',
   tagline: 'AjmanTech — Let There Be Light',
-  whatsappNumber: '+2348023456789',
-  phone: '+234 802 345 6789',
-  altPhone: '+234 813 987 6543',
+  whatsappNumber: '+2348075329182',
+  phone: '+234 807 532 9182',
+  altPhone: '+234 807 532 9182',
   email: 'info@ajmantech.ng',
   address: 'Plot 14, Commercial Avenue, Ikeja Electrical Market / Lekki Expressway, Lagos, Nigeria',
   openingHours: 'Monday – Saturday: 8:00 AM – 6:30 PM (Sunday: On-Call Emergency Service)',
@@ -1065,10 +1065,11 @@ export const INITIAL_STORE_SETTINGS: StoreSettings = {
     { code: 'FREESHIP', discountPercent: 0, minOrderAmount: 50000 },
   ],
   socialLinks: {
-    facebook: 'https://facebook.com/ajmantechservices',
-    instagram: 'https://instagram.com/ajmantech_services',
+    facebook: 'https://web.facebook.com/profile.php?id=61552688677268',
+    instagram: 'https://instagram.com/AJMANTECHSERVICES',
     twitter: 'https://twitter.com/ajmantech',
     linkedin: 'https://linkedin.com/company/ajmantech-services',
     youtube: 'https://youtube.com/@ajmantechservices',
+    googleBusiness: 'https://share.google/DJ7sSpxIS7SVEarWe',
   },
 };

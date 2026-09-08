@@ -124,27 +124,40 @@ export const Footer: React.FC = () => {
             {/* Social Links */}
             <div className="flex items-center gap-3 pt-3">
               <a
-                href={storeSettings.socialLinks.facebook}
+                href={storeSettings.socialLinks.facebook || 'https://web.facebook.com/profile.php?id=61552688677268'}
                 target="_blank"
-                rel="noreferrer"
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-                title="Facebook"
+                rel="noopener noreferrer"
+                aria-label="Visit our Facebook page"
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#1877F2] text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Visit our Facebook page"
               >
                 <Facebook className="w-4 h-4" />
               </a>
               <a
-                href={storeSettings.socialLinks.instagram}
+                href={storeSettings.socialLinks.instagram || 'https://instagram.com/AJMANTECHSERVICES'}
                 target="_blank"
-                rel="noreferrer"
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-                title="Instagram"
+                rel="noopener noreferrer"
+                aria-label="Visit our Instagram page"
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-gradient-to-tr hover:from-amber-500 hover:via-rose-500 hover:to-purple-600 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Visit our Instagram page"
               >
                 <Instagram className="w-4 h-4" />
               </a>
               <a
+                href="https://wa.me/2348075329182"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Chat with us on WhatsApp"
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Chat with us on WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </a>
+              <a
                 href={storeSettings.socialLinks.twitter}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
+                aria-label="Visit our Twitter / X page"
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
                 title="Twitter / X"
               >
@@ -153,7 +166,8 @@ export const Footer: React.FC = () => {
               <a
                 href={storeSettings.socialLinks.linkedin}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
+                aria-label="Visit our LinkedIn page"
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
                 title="LinkedIn"
               >

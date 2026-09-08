@@ -271,6 +271,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return fallback;
   };
 
+  const saveStored = <T,>(key: string, value: T): void => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.warn(`Failed to set localStorage key ${key}`, e);
+    }
+  };
+
   // Data States
   const [products, setProducts] = useState<Product[]>(() => loadStored(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS));
   const [categories, setCategories] = useState<Category[]>(() => loadStored(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES));
@@ -279,7 +287,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() => loadStored(STORAGE_KEYS.BLOG, INITIAL_BLOG_POSTS));
   const [reviews, setReviews] = useState<Review[]>(() => loadStored(STORAGE_KEYS.REVIEWS, INITIAL_REVIEWS));
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS);
-  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => loadStored(STORAGE_KEYS.SETTINGS, INITIAL_STORE_SETTINGS));
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
+    const loaded = loadStored<StoreSettings>(STORAGE_KEYS.SETTINGS, INITIAL_STORE_SETTINGS);
+    // Automatically update to official contacts if using old placeholder number or links
+    if (
+      loaded.whatsappNumber === '+2348023456789' ||
+      !loaded.socialLinks?.facebook?.includes('61552688677268')
+    ) {
+      const merged: StoreSettings = {
+        ...loaded,
+        whatsappNumber: INITIAL_STORE_SETTINGS.whatsappNumber,
+        phone: INITIAL_STORE_SETTINGS.phone,
+        altPhone: INITIAL_STORE_SETTINGS.altPhone,
+        socialLinks: {
+          ...loaded.socialLinks,
+          facebook: INITIAL_STORE_SETTINGS.socialLinks.facebook,
+          instagram: INITIAL_STORE_SETTINGS.socialLinks.instagram,
+          googleBusiness: INITIAL_STORE_SETTINGS.socialLinks.googleBusiness,
+        },
+      };
+      saveStored(STORAGE_KEYS.SETTINGS, merged);
+      return merged;
+    }
+    return loaded;
+  });
 
   // User State
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
@@ -290,7 +321,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         id: 'usr-demo-01',
         fullName: 'Engr. Joshua Ajayi',
         email: 'joshuaajayi0148@gmail.com',
-        phone: '+234 802 345 6789',
+        phone: '+234 807 532 9182',
         role: 'customer',
         addresses: [
           {
@@ -299,7 +330,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             fullAddress: 'No. 24 Admiralty Way, Lekki Phase 1',
             city: 'Lekki',
             state: 'Lagos',
-            phone: '+234 802 345 6789',
+            phone: '+234 807 532 9182',
             isDefault: true,
           },
           {

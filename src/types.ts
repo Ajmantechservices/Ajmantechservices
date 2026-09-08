@@ -253,6 +253,7 @@ export interface StoreSettings {
     twitter: string;
     linkedin: string;
     youtube: string;
+    googleBusiness?: string;
   };
 }
 

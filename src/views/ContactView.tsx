@@ -10,6 +10,8 @@ import {
   Sparkles,
   CheckCircle2,
   Building,
+  Facebook,
+  Instagram,
 } from 'lucide-react';
 
 export const ContactView: React.FC = () => {
@@ -104,15 +106,43 @@ export const ContactView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Instant WhatsApp Card */}
-              <div className="pt-2">
-                <button
-                  onClick={() => openWhatsApp('Hello AjmanTech Services, I would like to contact your customer care.')}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg transition-colors flex items-center justify-center gap-2"
+              {/* Instant WhatsApp Card & Social Channels */}
+              <div className="pt-2 space-y-3">
+                <a
+                  href="https://wa.me/2348075329182"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Chat with us on WhatsApp"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4 fill-white" />
-                  <span>Start Instant WhatsApp Chat</span>
-                </button>
+                  <span>Start Instant WhatsApp Chat (+234 807 532 9182)</span>
+                </a>
+
+                {/* Social Connect Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <a
+                    href="https://web.facebook.com/profile.php?id=61552688677268"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Visit our Facebook page"
+                    className="p-2.5 rounded-xl border border-slate-200 hover:border-[#1877F2] hover:bg-blue-50/50 text-slate-700 hover:text-[#1877F2] text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Facebook className="w-4 h-4 text-[#1877F2]" />
+                    <span>Facebook</span>
+                  </a>
+
+                  <a
+                    href="https://instagram.com/AJMANTECHSERVICES"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Visit our Instagram page"
+                    className="p-2.5 rounded-xl border border-slate-200 hover:border-pink-500 hover:bg-pink-50/50 text-slate-700 hover:text-pink-600 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Instagram className="w-4 h-4 text-pink-600" />
+                    <span>Instagram</span>
+                  </a>
+                </div>
               </div>
             </div>
 

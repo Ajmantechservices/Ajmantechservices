@@ -252,11 +252,14 @@ export const Header: React.FC = () => {
             </button>
             <span className="text-blue-300/40">|</span>
             <a
-              href="tel:+2348023456789"
+              href="https://wa.me/2348075329182"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Chat with us on WhatsApp"
               className="hover:text-blue-200 transition-colors flex items-center gap-1"
             >
               <Phone className="w-3.5 h-3.5 text-blue-300" />
-              <span className="font-semibold">+234 802 345 6789</span>
+              <span className="font-semibold">+234 807 532 9182</span>
             </a>
           </div>
         </div>
@@ -958,7 +961,15 @@ export const Header: React.FC = () => {
             <div className="pt-6 border-t border-slate-100 text-xs text-slate-500">
               <p className="font-semibold text-slate-900 mb-1">AjmanTech Services</p>
               <p>“Let There Be Light”</p>
-              <p className="mt-2 text-emerald-600 font-medium">+234 802 345 6789</p>
+              <a
+                href="https://wa.me/2348075329182"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Chat with us on WhatsApp"
+                className="mt-2 text-emerald-600 font-semibold block hover:underline"
+              >
+                +234 807 532 9182 (WhatsApp & Calls)
+              </a>
             </div>
           </div>
         </div>
