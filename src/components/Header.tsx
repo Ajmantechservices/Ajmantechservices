@@ -164,14 +164,11 @@ export const Header: React.FC = () => {
   const [isMobileCategoriesOpen, setIsMobileCategoriesOpen] = useState(true);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isServicesDropdownOpen, setIsServicesDropdownOpen] = useState(false);
-  const [isCategoriesDropdownOpen, setIsCategoriesDropdownOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const servicesDropdownRef = useRef<HTMLDivElement>(null);
   const servicesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const categoriesDropdownRef = useRef<HTMLDivElement>(null);
-  const categoriesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -185,19 +182,12 @@ export const Header: React.FC = () => {
       ) {
         setIsServicesDropdownOpen(false);
       }
-      if (
-        categoriesDropdownRef.current &&
-        !categoriesDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsCategoriesDropdownOpen(false);
-      }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsMobileMenuOpen(false);
         setIsUserMenuOpen(false);
         setIsServicesDropdownOpen(false);
-        setIsCategoriesDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -270,21 +260,7 @@ export const Header: React.FC = () => {
     openServiceModal(serviceName);
   };
 
-  const handleCategoriesMouseEnter = () => {
-    if (categoriesTimeoutRef.current) {
-      clearTimeout(categoriesTimeoutRef.current);
-    }
-    setIsCategoriesDropdownOpen(true);
-  };
-
-  const handleCategoriesMouseLeave = () => {
-    categoriesTimeoutRef.current = setTimeout(() => {
-      setIsCategoriesDropdownOpen(false);
-    }, 200);
-  };
-
   const handleCategorySelect = (categoryName: string) => {
-    setIsCategoriesDropdownOpen(false);
     setIsMobileMenuOpen(false);
     navigateTo('shop', { categorySlug: categoryName });
   };
@@ -310,19 +286,8 @@ export const Header: React.FC = () => {
       {/* Main Navigation Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3">
         <div className="flex items-center justify-between gap-3 md:gap-8">
-          {/* Left Cluster: Hamburger Menu Icon + Brand Logo */}
+          {/* Left Cluster: Brand Logo */}
           <div className="flex items-center gap-2.5 sm:gap-3.5">
-            <button
-              id="hamburger-menu-toggle"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#0047AB] border border-slate-200/80 transition-all flex items-center gap-2 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#0047AB]"
-              aria-label="Open Navigation Menu, Offers and Contact Info"
-              title="Open Menu & Store Highlights"
-            >
-              <Menu className="w-5 h-5 text-[#002D72]" />
-              <span className="hidden sm:inline text-xs font-bold tracking-wide uppercase text-slate-700">Menu</span>
-            </button>
-
             {/* Logo */}
             <div
               id="brand-logo"
@@ -368,112 +333,6 @@ export const Header: React.FC = () => {
             >
               Shop
             </button>
-
-            {/* ALL CATEGORIES INTERACTIVE DROPDOWN */}
-            <div
-              ref={categoriesDropdownRef}
-              className="relative"
-              onMouseEnter={handleCategoriesMouseEnter}
-              onMouseLeave={handleCategoriesMouseLeave}
-            >
-              <button
-                id="header-categories-menu-btn"
-                onClick={() => {
-                  setIsCategoriesDropdownOpen(!isCategoriesDropdownOpen);
-                }}
-                className={`transition-all relative pb-1 cursor-pointer flex items-center gap-1.5 font-medium ${
-                  currentView === 'categories' || isCategoriesDropdownOpen
-                    ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                    : 'hover:text-[#0047AB] text-slate-600'
-                }`}
-                aria-haspopup="true"
-                aria-expanded={isCategoriesDropdownOpen}
-              >
-                <span>Categories</span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                    isCategoriesDropdownOpen ? 'rotate-180 text-[#0047AB]' : 'text-slate-400'
-                  }`}
-                />
-              </button>
-
-              {/* CATEGORIES DROPDOWN PANEL */}
-              {isCategoriesDropdownOpen && (
-                <div
-                  id="categories-dropdown-panel"
-                  className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[660px] bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-5 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
-                >
-                  <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-100">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0047AB] flex items-center justify-center">
-                        <Grid className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-[#002D72] uppercase tracking-wider">
-                          All Electrical & Lighting Categories
-                        </h4>
-                        <p className="text-[11px] text-slate-500 font-normal">
-                          Browse genuine lighting fixtures, solar kits, CCTV & switchgear collections
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setIsCategoriesDropdownOpen(false);
-                        navigateTo('categories');
-                      }}
-                      className="text-xs font-bold text-[#0047AB] hover:text-[#002D72] flex items-center gap-1 group cursor-pointer"
-                    >
-                      <span>View All Categories</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 max-h-[380px] overflow-y-auto pr-1">
-                    {categories.map((cat) => (
-                      <div
-                        key={cat.id}
-                        onClick={() => handleCategorySelect(cat.name)}
-                        className="group flex items-start gap-3 p-2.5 rounded-xl hover:bg-blue-50/70 border border-transparent hover:border-blue-100 transition-all cursor-pointer text-left"
-                      >
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 group-hover:bg-blue-100 text-[#0047AB] flex items-center justify-center shrink-0 transition-colors">
-                          {getCategoryIcon(cat.iconName)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <h5 className="text-xs font-bold text-slate-900 group-hover:text-[#0047AB] transition-colors leading-tight">
-                              {cat.name}
-                            </h5>
-                            <span className="text-[10px] text-slate-400 font-medium shrink-0 bg-slate-100 group-hover:bg-blue-100/60 px-1.5 py-0.5 rounded-md">
-                              {cat.productCount} items
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                            {cat.description}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 -mx-5 -mb-5 px-5 py-3 rounded-b-2xl">
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      Looking for custom commercial electrical supplies or bulk contractor orders?
-                    </span>
-                    <button
-                      onClick={() => {
-                        setIsCategoriesDropdownOpen(false);
-                        openServiceModal('Custom Project Procurement');
-                      }}
-                      className="text-xs font-bold text-[#0047AB] hover:underline cursor-pointer shrink-0"
-                    >
-                      Request Quotation &rarr;
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* OUR SERVICES INTERACTIVE DROPDOWN */}
             <div
@@ -882,18 +741,27 @@ export const Header: React.FC = () => {
             <button
               id="header-shop-now-btn"
               onClick={() => navigateTo('shop')}
-              className="hidden sm:inline-flex bg-[#0047AB] hover:bg-[#002D72] text-white text-sm font-bold px-6 py-2.5 rounded-full shadow-lg shadow-blue-200 transition-all cursor-pointer"
+              className="hidden xl:inline-flex bg-[#0047AB] hover:bg-[#002D72] text-white text-sm font-bold px-5 py-2.5 rounded-full shadow-md shadow-blue-200 transition-all cursor-pointer"
             >
               Shop Now
             </button>
 
-            {/* Mobile Menu Hamburger */}
+            {/* Hamburger Menu Toggle (Right Side Above) */}
             <button
-              id="mobile-menu-toggle"
+              id="hamburger-menu-toggle"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-full text-slate-700 hover:bg-slate-100 cursor-pointer"
+              className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#0047AB] border border-slate-200/90 transition-all flex items-center gap-2 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#0047AB] shadow-2xs hover:shadow-xs active:scale-95"
+              aria-label="Open Navigation Menu and Categories"
+              title="Open Menu & Store Highlights"
             >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {isMobileMenuOpen ? (
+                <X className="w-5 h-5 text-[#0047AB]" />
+              ) : (
+                <Menu className="w-5 h-5 text-[#002D72]" />
+              )}
+              <span className="hidden sm:inline text-xs font-bold tracking-wide uppercase text-slate-700">
+                Menu
+              </span>
             </button>
           </div>
         </div>
@@ -917,7 +785,7 @@ export const Header: React.FC = () => {
 
       {/* Hamburger Drawer Menu (Desktop & Mobile) containing all Top Information, Announcements, Shortcuts & Full Navigation */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 flex justify-start">
+        <div className="fixed inset-0 z-50 flex justify-end">
           {/* Backdrop Overlay */}
           <div
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
@@ -927,7 +795,7 @@ export const Header: React.FC = () => {
 
           {/* Drawer Container */}
           <div
-            className="relative w-full max-w-md sm:max-w-lg bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 animate-in slide-in-from-left duration-200"
+            className="relative w-full max-w-md sm:max-w-lg bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 animate-in slide-in-from-right duration-200"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation Menu and Highlights"
