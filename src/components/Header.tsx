@@ -26,6 +26,10 @@ import {
   Activity,
   ArrowRight,
   CheckCircle2,
+  MapPin,
+  Clock,
+  Facebook,
+  Instagram,
 } from 'lucide-react';
 import { ViewState } from '../types';
 
@@ -171,9 +175,32 @@ export const Header: React.FC = () => {
         setIsServicesDropdownOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+        setIsUserMenuOpen(false);
+        setIsServicesDropdownOpen(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
+
+  // Lock body scroll when hamburger menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
 
   const handleServicesMouseEnter = () => {
     if (servicesTimeoutRef.current) {
@@ -227,65 +254,41 @@ export const Header: React.FC = () => {
 
   return (
     <header id="main-header" className="sticky top-0 z-40 w-full bg-white shadow-xs">
-      {/* Top Announcement Bar */}
-      <div className="bg-[#002D72] text-white text-xs py-1.5 px-4 sm:px-8 border-b border-[#002255]">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs font-semibold tracking-wider">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-blue-200">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              FREE DELIVERY ON ORDERS OVER ₦150,000
-            </span>
-            <span className="hidden md:inline text-blue-300/40">—</span>
-            <span className="hidden md:inline-flex items-center gap-1 text-white">
-              <Truck className="w-3.5 h-3.5 text-blue-300" />
-              INSTALLATION SERVICES AVAILABLE IN LAGOS & ABUJA
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4 text-xs font-medium">
-            <button
-              onClick={() => navigateTo('track-order')}
-              className="hover:text-blue-200 transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              <Package className="w-3.5 h-3.5 text-blue-300" />
-              <span>Track Order</span>
-            </button>
-            <span className="text-blue-300/40">|</span>
-            <a
-              href="https://wa.me/2348075329182"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Chat with us on WhatsApp"
-              className="hover:text-blue-200 transition-colors flex items-center gap-1"
-            >
-              <Phone className="w-3.5 h-3.5 text-blue-300" />
-              <span className="font-semibold">+234 807 532 9182</span>
-            </a>
-          </div>
-        </div>
-      </div>
-
       {/* Main Navigation Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3.5">
-        <div className="flex items-center justify-between gap-4 md:gap-8">
-          {/* Logo */}
-          <div
-            id="brand-logo"
-            onClick={() => navigateTo('home')}
-            className="flex items-center gap-2.5 cursor-pointer group shrink-0"
-          >
-            <div className="w-10 h-10 bg-[#0047AB] rounded-xl flex items-center justify-center shadow-md shadow-blue-200 group-hover:bg-[#002D72] transition-colors">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-xl tracking-tight text-[#002D72]">
-                AJMANTECH
-              </span>
-              <span className="text-[10px] uppercase tracking-widest font-medium text-slate-500 -mt-1">
-                Let There Be Light
-              </span>
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3">
+        <div className="flex items-center justify-between gap-3 md:gap-8">
+          {/* Left Cluster: Hamburger Menu Icon + Brand Logo */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            <button
+              id="hamburger-menu-toggle"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#0047AB] border border-slate-200/80 transition-all flex items-center gap-2 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#0047AB]"
+              aria-label="Open Navigation Menu, Offers and Contact Info"
+              title="Open Menu & Store Highlights"
+            >
+              <Menu className="w-5 h-5 text-[#002D72]" />
+              <span className="hidden sm:inline text-xs font-bold tracking-wide uppercase text-slate-700">Menu</span>
+            </button>
+
+            {/* Logo */}
+            <div
+              id="brand-logo"
+              onClick={() => navigateTo('home')}
+              className="flex items-center gap-2.5 cursor-pointer group shrink-0"
+            >
+              <div className="w-10 h-10 bg-[#0047AB] rounded-xl flex items-center justify-center shadow-md shadow-blue-200 group-hover:bg-[#002D72] transition-colors">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-xl tracking-tight text-[#002D72]">
+                  AJMANTECH
+                </span>
+                <span className="text-[10px] uppercase tracking-widest font-medium text-slate-500 -mt-1">
+                  Let There Be Light
+                </span>
+              </div>
             </div>
           </div>
 
@@ -764,231 +767,423 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop Main Sub-Navigation Bar Strip */}
-      <div className="hidden lg:block bg-slate-50/90 border-t border-slate-100 py-2.5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
-          <div className="flex items-center gap-6 text-xs font-semibold text-slate-700">
-            <span className="text-slate-400 font-medium text-[11px] uppercase tracking-wider">
-              Quick Explore:
-            </span>
-            <button
-              onClick={() => navigateTo('shop')}
-              className="hover:text-[#0047AB] transition-colors cursor-pointer"
-            >
-              Lighting & Fixtures
-            </button>
-            <button
-              onClick={() => navigateTo('services')}
-              className="hover:text-[#0047AB] transition-colors cursor-pointer flex items-center gap-1"
-            >
-              <Wrench className="w-3.5 h-3.5 text-amber-500" />
-              Installation & Repairs
-            </button>
-            <button
-              onClick={() => navigateTo('portfolio')}
-              className="hover:text-[#0047AB] transition-colors cursor-pointer"
-            >
-              Verified Projects
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4 text-xs font-semibold text-slate-600">
-            <span className="flex items-center gap-1.5 text-slate-700">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              100% Genuine Electrical Products
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Drawer Menu */}
+      {/* Hamburger Drawer Menu (Desktop & Mobile) containing all Top Information, Announcements, Shortcuts & Full Navigation */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 top-[110px] bg-slate-950/60 backdrop-blur-xs z-50 flex justify-end">
-          <div className="w-4/5 max-w-xs bg-white h-full p-6 flex flex-col justify-between shadow-2xl overflow-y-auto">
-            <div className="space-y-4">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">
-                Menu Navigation
-              </div>
-              <nav className="flex flex-col space-y-1.5">
-                <button
+        <div className="fixed inset-0 z-50 flex justify-start">
+          {/* Backdrop Overlay */}
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Drawer Container */}
+          <div
+            className="relative w-full max-w-md sm:max-w-lg bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 animate-in slide-in-from-left duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation Menu and Highlights"
+          >
+            <div className="p-5 sm:p-6 space-y-6">
+              {/* Drawer Top Header: Brand & Close */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div
                   onClick={() => {
                     setIsMobileMenuOpen(false);
                     navigateTo('home');
                   }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'home'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
+                  className="flex items-center gap-2.5 cursor-pointer group"
                 >
-                  Home
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    navigateTo('shop');
-                  }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'shop'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
-                >
-                  Shop
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    navigateTo('categories');
-                  }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'categories'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
-                >
-                  Categories
-                </button>
-
-                {/* Mobile Accordion for Services */}
-                <div className="rounded-lg overflow-hidden border border-slate-100">
-                  <button
-                    onClick={() => setIsMobileServicesOpen(!isMobileServicesOpen)}
-                    className="w-full flex items-center justify-between text-left text-sm font-semibold py-2 px-3 bg-slate-50 text-slate-900"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Wrench className="w-4 h-4 text-[#0047AB]" />
-                      Our Services
+                  <div className="w-10 h-10 bg-[#0047AB] rounded-xl flex items-center justify-center shadow-md shadow-blue-200 group-hover:bg-[#002D72] transition-colors">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-lg tracking-tight text-[#002D72]">
+                      AJMANTECH
                     </span>
-                    <ChevronDown
-                      className={`w-4 h-4 text-slate-500 transition-transform ${
-                        isMobileServicesOpen ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {isMobileServicesOpen && (
-                    <div className="p-2 space-y-1 bg-white border-t border-slate-100 max-h-60 overflow-y-auto">
-                      {ALL_COMPANY_SERVICES.map((srv) => (
-                        <button
-                          key={srv.id}
-                          onClick={() => handleServiceSelect(srv.name)}
-                          className="w-full text-left p-2 rounded-md hover:bg-blue-50 text-xs font-medium text-slate-700 flex items-center justify-between group"
-                        >
-                          <span className="truncate group-hover:text-[#0047AB]">{srv.name}</span>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0047AB] shrink-0" />
-                        </button>
-                      ))}
-                      <div className="pt-2 border-t border-slate-100 space-y-1">
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            navigateTo('services-portal');
-                          }}
-                          className="w-full text-center py-1.5 px-3 rounded-md bg-cyan-50 text-xs font-bold text-cyan-700 hover:bg-cyan-100 flex items-center justify-center gap-1.5"
-                        >
-                          <span>⚡</span>
-                          <span>Services Directory Portal</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            navigateTo('services');
-                          }}
-                          className="w-full text-center py-1.5 text-xs font-bold text-[#0047AB] hover:underline"
-                        >
-                          View Full Services Page &rarr;
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                    <span className="text-[10px] uppercase tracking-widest font-medium text-slate-500 -mt-1">
+                      Let There Be Light
+                    </span>
+                  </div>
                 </div>
 
                 <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    navigateTo('portfolio');
-                  }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'portfolio'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
+                  id="drawer-close-btn"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-all cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                  aria-label="Close menu"
                 >
-                  Projects
+                  <span className="hidden sm:inline">Close</span>
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
 
+              {/* STORE ANNOUNCEMENT & HIGHLIGHTS BANNER (Moved from Top of Website) */}
+              <div className="bg-gradient-to-br from-[#002D72] via-[#00388D] to-[#0047AB] text-white rounded-2xl p-4 shadow-lg shadow-blue-900/10 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-blue-400/20">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    Special Store Announcements
+                  </span>
+                  <span className="text-[10px] bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                    Active
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-white/10 text-amber-300 shrink-0 mt-0.5">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white tracking-wide uppercase text-[11px] sm:text-xs">
+                        FREE DELIVERY ON ORDERS OVER ₦150,000
+                      </p>
+                      <p className="text-[11px] text-blue-200/90 leading-tight">
+                        Safe nationwide dispatch across Lagos, Abuja, Port Harcourt & all states.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 pt-2 border-t border-white/10">
+                    <div className="p-1.5 rounded-lg bg-white/10 text-cyan-300 shrink-0 mt-0.5">
+                      <Truck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white tracking-wide uppercase text-[11px] sm:text-xs">
+                        INSTALLATION SERVICES AVAILABLE IN LAGOS & ABUJA
+                      </p>
+                      <p className="text-[11px] text-blue-200/90 leading-tight">
+                        Certified engineers for solar setups, CCTV security, and industrial 3-phase wiring.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 pt-2 border-t border-white/10">
+                    <div className="p-1.5 rounded-lg bg-white/10 text-emerald-300 shrink-0 mt-0.5">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white tracking-wide uppercase text-[11px] sm:text-xs">
+                        100% GENUINE ELECTRICAL PRODUCTS
+                      </p>
+                      <p className="text-[11px] text-blue-200/90 leading-tight">
+                        Official manufacturer warranties and authentic electrical safety guarantees.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* QUICK ACTIONS: TRACK ORDER & DIRECT HOTLINE (Moved from Top of Website) */}
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
-                    navigateTo('about');
+                    navigateTo('track-order');
                   }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'about'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
+                  className="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200 text-left transition-all cursor-pointer group flex flex-col justify-between"
                 >
-                  About Us
+                  <Package className="w-4 h-4 text-[#0047AB] mb-1.5 group-hover:scale-110 transition-transform" />
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">Track Order</p>
+                    <p className="text-[10px] text-slate-500">Live shipment tracking</p>
+                  </div>
                 </button>
 
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    navigateTo('blog');
-                  }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'blog'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
+                <a
+                  href="https://wa.me/2348075329182"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Chat with us on WhatsApp"
+                  className="p-3 rounded-xl bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200 text-left transition-all cursor-pointer group flex flex-col justify-between"
                 >
-                  Blog
-                </button>
+                  <Phone className="w-4 h-4 text-emerald-600 mb-1.5 group-hover:scale-110 transition-transform" />
+                  <div>
+                    <p className="text-xs font-bold text-emerald-950">+234 807 532 9182</p>
+                    <p className="text-[10px] text-emerald-700">WhatsApp & Direct Call</p>
+                  </div>
+                </a>
+              </div>
 
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    navigateTo('contact');
-                  }}
-                  className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                    currentView === 'contact'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
-                >
-                  Contact
-                </button>
-              </nav>
+              {/* QUICK EXPLORE SHORTCUTS (Moved from Sub-navigation Bar) */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Quick Explore Shortcuts
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('shop');
+                    }}
+                    className="text-left px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>💡</span>
+                    <span>Lighting & Fixtures</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('services');
+                    }}
+                    className="text-left px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-colors flex items-center gap-1.5"
+                  >
+                    <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>Installation & Repairs</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('portfolio');
+                    }}
+                    className="text-left px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>🏗️</span>
+                    <span>Verified Projects</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('services-portal');
+                    }}
+                    className="text-left px-3 py-2 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-xs font-bold text-cyan-800 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>⚡</span>
+                    <span>Services Directory</span>
+                  </button>
+                </div>
+              </div>
 
-              <div className="pt-4 border-t border-slate-100 space-y-2">
+              {/* PRIMARY SITE NAVIGATION */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1 border-b border-slate-100">
+                  Main Navigation
+                </div>
+                <nav className="flex flex-col space-y-1">
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('home');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'home'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Home
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('shop');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'shop'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Shop All Products
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('categories');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'categories'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Categories
+                  </button>
+
+                  {/* Accordion for Services */}
+                  <div className="rounded-lg overflow-hidden border border-slate-100">
+                    <button
+                      onClick={() => setIsMobileServicesOpen(!isMobileServicesOpen)}
+                      className="w-full flex items-center justify-between text-left text-sm font-semibold py-2.5 px-3 bg-slate-50 text-slate-900"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Wrench className="w-4 h-4 text-[#0047AB]" />
+                        Our Services
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-slate-500 transition-transform ${
+                          isMobileServicesOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {isMobileServicesOpen && (
+                      <div className="p-2 space-y-1 bg-white border-t border-slate-100 max-h-60 overflow-y-auto">
+                        {ALL_COMPANY_SERVICES.map((srv) => (
+                          <button
+                            key={srv.id}
+                            onClick={() => handleServiceSelect(srv.name)}
+                            className="w-full text-left p-2 rounded-md hover:bg-blue-50 text-xs font-medium text-slate-700 flex items-center justify-between group"
+                          >
+                            <span className="truncate group-hover:text-[#0047AB]">{srv.name}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0047AB] shrink-0" />
+                          </button>
+                        ))}
+                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                          <button
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              navigateTo('services-portal');
+                            }}
+                            className="w-full text-center py-1.5 px-3 rounded-md bg-cyan-50 text-xs font-bold text-cyan-700 hover:bg-cyan-100 flex items-center justify-center gap-1.5"
+                          >
+                            <span>⚡</span>
+                            <span>Interactive Services Portal</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              navigateTo('services');
+                            }}
+                            className="w-full text-center py-1.5 text-xs font-bold text-[#0047AB] hover:underline"
+                          >
+                            View Full Services Page &rarr;
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('portfolio');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'portfolio'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Verified Projects
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('about');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'about'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    About Us
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('blog');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'blog'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Technical Blog
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('contact');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'contact'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Contact Showroom
+                  </button>
+                </nav>
+              </div>
+
+              {/* BOOK INSTALLATION CTA */}
+              <div className="pt-2">
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
                     openServiceModal();
                   }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold text-center flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold text-center flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-amber-500/10 transition-transform active:scale-[0.99]"
                 >
                   <Wrench className="w-4 h-4" />
-                  Book An Installation
+                  <span>Book A Certified Electrician</span>
                 </button>
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-100 text-xs text-slate-500">
-              <p className="font-semibold text-slate-900 mb-1">AjmanTech Services</p>
-              <p>“Let There Be Light”</p>
-              <a
-                href="https://wa.me/2348075329182"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Chat with us on WhatsApp"
-                className="mt-2 text-emerald-600 font-semibold block hover:underline"
-              >
-                +234 807 532 9182 (WhatsApp & Calls)
-              </a>
+            {/* DRAWER FOOTER: SHOWROOM ADDRESS, HOURS & SOCIAL MEDIA */}
+            <div className="p-5 sm:p-6 bg-slate-50 border-t border-slate-100 space-y-3.5 text-xs text-slate-600">
+              <div>
+                <p className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <span>AjmanTech Services</span>
+                  <span className="text-[10px] text-[#0047AB] font-normal italic">“Let There Be Light”</span>
+                </p>
+                <div className="mt-1.5 space-y-1 text-[11px] text-slate-500">
+                  <p className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#0047AB] shrink-0" />
+                    <span>Plot 14 Commercial Ave, Ikeja / Lekki, Lagos</span>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Mon – Sat: 8:00 AM – 6:30 PM (Sun: On-Call)</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Social Channels */}
+              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-slate-400">Connect with us:</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="https://web.facebook.com/profile.php?id=61552688677268"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="AjmanTech on Facebook"
+                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-blue-600 hover:bg-blue-50 transition-colors"
+                  >
+                    <Facebook className="w-4 h-4" />
+                  </a>
+                  <a
+                    href="https://instagram.com/AJMANTECHSERVICES"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="AjmanTech on Instagram"
+                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-rose-600 hover:bg-rose-50 transition-colors"
+                  >
+                    <Instagram className="w-4 h-4" />
+                  </a>
+                  <a
+                    href="https://wa.me/2348075329182"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Chat with us on WhatsApp"
+                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
