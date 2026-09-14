@@ -46,6 +46,13 @@ export const ServicesView: React.FC = () => {
               Book An Electrician Now
             </button>
             <button
+              onClick={() => navigateTo('services-portal')}
+              className="px-7 py-3.5 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>⚡</span>
+              <span>Services Portal Directory</span>
+            </button>
+            <button
               onClick={() => openWhatsApp('Hello AjmanTech Services, I would like to inquire about your electrical and installation services.')}
               className="px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer"
             >

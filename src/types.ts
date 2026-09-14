@@ -293,6 +293,7 @@ export type ViewState =
   | 'account'
   | 'track-order'
   | 'wishlist'
+  | 'services-portal'
   | 'admin'
   | 'admin-login'
   | 'admin-signup'

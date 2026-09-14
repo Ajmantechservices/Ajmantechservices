@@ -27,6 +27,7 @@ import { WishlistView } from './views/WishlistView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 import { AdminLoginView } from './views/AdminLoginView';
 import { AdminSignupView } from './views/AdminSignupView';
+import { DashboardMenuView } from './views/DashboardMenuView';
 
 const MainRouter: React.FC = () => {
   const { currentView, isAdmin } = useStore();
@@ -68,6 +69,8 @@ const MainRouter: React.FC = () => {
         return <CustomerAccountView />;
       case 'wishlist':
         return <WishlistView />;
+      case 'services-portal':
+        return <DashboardMenuView />;
       case 'admin-login':
         return <AdminLoginView />;
       case 'admin-signup':
@@ -85,6 +88,17 @@ const MainRouter: React.FC = () => {
     currentView === 'admin-login' ||
     currentView === 'admin-signup' ||
     ((currentView === 'admin' || currentView === 'admin-dashboard') && isAdmin);
+
+  if (currentView === 'services-portal') {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 selection:bg-cyan-400 selection:text-slate-950">
+        {renderView()}
+        <ServiceBookingModal />
+        <WhatsAppFloatingButton />
+        <ToastNotification />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-amber-400 selection:text-slate-950">

@@ -431,6 +431,15 @@ export const Header: React.FC = () => {
                       <button
                         onClick={() => {
                           setIsServicesDropdownOpen(false);
+                          navigateTo('services-portal');
+                        }}
+                        className="px-3.5 py-1.5 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span>⚡ Services Portal</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsServicesDropdownOpen(false);
                           openServiceModal();
                         }}
                         className="px-3.5 py-1.5 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
@@ -872,7 +881,17 @@ export const Header: React.FC = () => {
                           <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0047AB] shrink-0" />
                         </button>
                       ))}
-                      <div className="pt-2 border-t border-slate-100">
+                      <div className="pt-2 border-t border-slate-100 space-y-1">
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            navigateTo('services-portal');
+                          }}
+                          className="w-full text-center py-1.5 px-3 rounded-md bg-cyan-50 text-xs font-bold text-cyan-700 hover:bg-cyan-100 flex items-center justify-center gap-1.5"
+                        >
+                          <span>⚡</span>
+                          <span>Services Directory Portal</span>
+                        </button>
                         <button
                           onClick={() => {
                             setIsMobileMenuOpen(false);
