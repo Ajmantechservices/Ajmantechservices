@@ -30,6 +30,12 @@ import {
   Clock,
   Facebook,
   Instagram,
+  Gem,
+  Cable,
+  ShieldAlert,
+  ToggleRight,
+  Grid,
+  Layers,
 } from 'lucide-react';
 import { ViewState } from '../types';
 
@@ -148,19 +154,24 @@ export const Header: React.FC = () => {
     logout,
     isAdmin,
     products,
+    categories,
     services,
     formatNaira,
   } = useStore();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileServicesOpen, setIsMobileServicesOpen] = useState(false);
+  const [isMobileCategoriesOpen, setIsMobileCategoriesOpen] = useState(true);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isServicesDropdownOpen, setIsServicesDropdownOpen] = useState(false);
+  const [isCategoriesDropdownOpen, setIsCategoriesDropdownOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const servicesDropdownRef = useRef<HTMLDivElement>(null);
   const servicesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const categoriesDropdownRef = useRef<HTMLDivElement>(null);
+  const categoriesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -174,12 +185,19 @@ export const Header: React.FC = () => {
       ) {
         setIsServicesDropdownOpen(false);
       }
+      if (
+        categoriesDropdownRef.current &&
+        !categoriesDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsCategoriesDropdownOpen(false);
+      }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsMobileMenuOpen(false);
         setIsUserMenuOpen(false);
         setIsServicesDropdownOpen(false);
+        setIsCategoriesDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -252,6 +270,41 @@ export const Header: React.FC = () => {
     openServiceModal(serviceName);
   };
 
+  const handleCategoriesMouseEnter = () => {
+    if (categoriesTimeoutRef.current) {
+      clearTimeout(categoriesTimeoutRef.current);
+    }
+    setIsCategoriesDropdownOpen(true);
+  };
+
+  const handleCategoriesMouseLeave = () => {
+    categoriesTimeoutRef.current = setTimeout(() => {
+      setIsCategoriesDropdownOpen(false);
+    }, 200);
+  };
+
+  const handleCategorySelect = (categoryName: string) => {
+    setIsCategoriesDropdownOpen(false);
+    setIsMobileMenuOpen(false);
+    navigateTo('shop', { categorySlug: categoryName });
+  };
+
+  const getCategoryIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'Lightbulb': return <Lightbulb className="w-4 h-4" />;
+      case 'Sparkles': return <Sparkles className="w-4 h-4" />;
+      case 'Gem': return <Gem className="w-4 h-4" />;
+      case 'Cable': return <Cable className="w-4 h-4" />;
+      case 'ShieldAlert': return <ShieldAlert className="w-4 h-4" />;
+      case 'Camera': return <Camera className="w-4 h-4" />;
+      case 'SunMedium': return <SunMedium className="w-4 h-4" />;
+      case 'ToggleRight': return <ToggleRight className="w-4 h-4" />;
+      case 'Layers': return <Layers className="w-4 h-4" />;
+      case 'Grid': return <Grid className="w-4 h-4" />;
+      default: return <Sparkles className="w-4 h-4" />;
+    }
+  };
+
   return (
     <header id="main-header" className="sticky top-0 z-40 w-full bg-white shadow-xs">
       {/* Main Navigation Bar */}
@@ -316,16 +369,111 @@ export const Header: React.FC = () => {
               Shop
             </button>
 
-            <button
-              onClick={() => navigateTo('categories')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'categories'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
+            {/* ALL CATEGORIES INTERACTIVE DROPDOWN */}
+            <div
+              ref={categoriesDropdownRef}
+              className="relative"
+              onMouseEnter={handleCategoriesMouseEnter}
+              onMouseLeave={handleCategoriesMouseLeave}
             >
-              Categories
-            </button>
+              <button
+                id="header-categories-menu-btn"
+                onClick={() => {
+                  setIsCategoriesDropdownOpen(!isCategoriesDropdownOpen);
+                }}
+                className={`transition-all relative pb-1 cursor-pointer flex items-center gap-1.5 font-medium ${
+                  currentView === 'categories' || isCategoriesDropdownOpen
+                    ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
+                    : 'hover:text-[#0047AB] text-slate-600'
+                }`}
+                aria-haspopup="true"
+                aria-expanded={isCategoriesDropdownOpen}
+              >
+                <span>Categories</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    isCategoriesDropdownOpen ? 'rotate-180 text-[#0047AB]' : 'text-slate-400'
+                  }`}
+                />
+              </button>
+
+              {/* CATEGORIES DROPDOWN PANEL */}
+              {isCategoriesDropdownOpen && (
+                <div
+                  id="categories-dropdown-panel"
+                  className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[660px] bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-5 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                  <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0047AB] flex items-center justify-center">
+                        <Grid className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-[#002D72] uppercase tracking-wider">
+                          All Electrical & Lighting Categories
+                        </h4>
+                        <p className="text-[11px] text-slate-500 font-normal">
+                          Browse genuine lighting fixtures, solar kits, CCTV & switchgear collections
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsCategoriesDropdownOpen(false);
+                        navigateTo('categories');
+                      }}
+                      className="text-xs font-bold text-[#0047AB] hover:text-[#002D72] flex items-center gap-1 group cursor-pointer"
+                    >
+                      <span>View All Categories</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 max-h-[380px] overflow-y-auto pr-1">
+                    {categories.map((cat) => (
+                      <div
+                        key={cat.id}
+                        onClick={() => handleCategorySelect(cat.name)}
+                        className="group flex items-start gap-3 p-2.5 rounded-xl hover:bg-blue-50/70 border border-transparent hover:border-blue-100 transition-all cursor-pointer text-left"
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-slate-100 group-hover:bg-blue-100 text-[#0047AB] flex items-center justify-center shrink-0 transition-colors">
+                          {getCategoryIcon(cat.iconName)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h5 className="text-xs font-bold text-slate-900 group-hover:text-[#0047AB] transition-colors leading-tight">
+                              {cat.name}
+                            </h5>
+                            <span className="text-[10px] text-slate-400 font-medium shrink-0 bg-slate-100 group-hover:bg-blue-100/60 px-1.5 py-0.5 rounded-md">
+                              {cat.productCount} items
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                            {cat.description}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 -mx-5 -mb-5 px-5 py-3 rounded-b-2xl">
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Looking for custom commercial electrical supplies or bulk contractor orders?
+                    </span>
+                    <button
+                      onClick={() => {
+                        setIsCategoriesDropdownOpen(false);
+                        openServiceModal('Custom Project Procurement');
+                      }}
+                      className="text-xs font-bold text-[#0047AB] hover:underline cursor-pointer shrink-0"
+                    >
+                      Request Quotation &rarr;
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* OUR SERVICES INTERACTIVE DROPDOWN */}
             <div
@@ -908,6 +1056,48 @@ export const Header: React.FC = () => {
                 </a>
               </div>
 
+              {/* ALL PRODUCT CATEGORIES TILES (In Menu Drawer) */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Grid className="w-3.5 h-3.5 text-[#0047AB]" />
+                    All Categories ({categories?.length || 8})
+                  </span>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('categories');
+                    }}
+                    className="text-[11px] font-bold text-[#0047AB] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Full Grid</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleCategorySelect(cat.name)}
+                      className="p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 text-left transition-all cursor-pointer group flex items-start gap-2.5"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 group-hover:border-blue-200 flex items-center justify-center text-[#0047AB] shrink-0 shadow-2xs group-hover:scale-105 transition-transform mt-0.5">
+                        {getCategoryIcon(cat.iconName)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-800 group-hover:text-[#0047AB] truncate leading-tight">
+                          {cat.name}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {cat.productCount} items
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* QUICK EXPLORE SHORTCUTS (Moved from Sub-navigation Bar) */}
               <div className="space-y-2">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -991,19 +1181,64 @@ export const Header: React.FC = () => {
                     Shop All Products
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      navigateTo('categories');
-                    }}
-                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                      currentView === 'categories'
-                        ? 'bg-blue-50 text-blue-700 font-bold'
-                        : 'text-slate-800 hover:bg-slate-50'
-                    }`}
-                  >
-                    Categories
-                  </button>
+                  {/* Accordion for Categories */}
+                  <div className="rounded-lg overflow-hidden border border-slate-100">
+                    <button
+                      onClick={() => setIsMobileCategoriesOpen(!isMobileCategoriesOpen)}
+                      className="w-full flex items-center justify-between text-left text-sm font-semibold py-2.5 px-3 bg-slate-50 text-slate-900"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Grid className="w-4 h-4 text-[#0047AB]" />
+                        Shop by Category
+                        <span className="text-[10px] bg-blue-100 text-[#0047AB] font-bold px-1.5 py-0.5 rounded-full">
+                          {categories?.length || 8}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-slate-500 transition-transform ${
+                          isMobileCategoriesOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {isMobileCategoriesOpen && (
+                      <div className="p-2 space-y-1 bg-white border-t border-slate-100 max-h-64 overflow-y-auto">
+                        {categories.map((cat) => (
+                          <button
+                            key={cat.id}
+                            onClick={() => handleCategorySelect(cat.name)}
+                            className="w-full text-left p-2 rounded-md hover:bg-blue-50 text-xs font-medium text-slate-700 flex items-center justify-between group transition-colors cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="p-1 rounded-md bg-slate-100 group-hover:bg-blue-100 text-[#0047AB] transition-colors shrink-0">
+                                {getCategoryIcon(cat.iconName)}
+                              </span>
+                              <span className="truncate group-hover:text-[#0047AB] font-medium text-slate-800">
+                                {cat.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md font-mono">
+                                {cat.productCount}
+                              </span>
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0047AB]" />
+                            </div>
+                          </button>
+                        ))}
+                        <div className="pt-2 border-t border-slate-100">
+                          <button
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              navigateTo('categories');
+                            }}
+                            className="w-full text-center py-2 px-3 rounded-lg bg-blue-50 hover:bg-blue-100 text-xs font-bold text-[#0047AB] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <span>Browse All Categories Grid &rarr;</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Accordion for Services */}
                   <div className="rounded-lg overflow-hidden border border-slate-100">
