@@ -163,12 +163,9 @@ export const Header: React.FC = () => {
   const [isMobileServicesOpen, setIsMobileServicesOpen] = useState(false);
   const [isMobileCategoriesOpen, setIsMobileCategoriesOpen] = useState(true);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isServicesDropdownOpen, setIsServicesDropdownOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-  const servicesDropdownRef = useRef<HTMLDivElement>(null);
-  const servicesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -176,18 +173,11 @@ export const Header: React.FC = () => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchFocused(false);
       }
-      if (
-        servicesDropdownRef.current &&
-        !servicesDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsServicesDropdownOpen(false);
-      }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsMobileMenuOpen(false);
         setIsUserMenuOpen(false);
-        setIsServicesDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -209,19 +199,6 @@ export const Header: React.FC = () => {
       document.body.style.overflow = '';
     };
   }, [isMobileMenuOpen]);
-
-  const handleServicesMouseEnter = () => {
-    if (servicesTimeoutRef.current) {
-      clearTimeout(servicesTimeoutRef.current);
-    }
-    setIsServicesDropdownOpen(true);
-  };
-
-  const handleServicesMouseLeave = () => {
-    servicesTimeoutRef.current = setTimeout(() => {
-      setIsServicesDropdownOpen(false);
-    }, 200);
-  };
 
   // Filter search results
   const searchResults = searchInput.trim()
@@ -255,7 +232,6 @@ export const Header: React.FC = () => {
   };
 
   const handleServiceSelect = (serviceName: string) => {
-    setIsServicesDropdownOpen(false);
     setIsMobileMenuOpen(false);
     openServiceModal(serviceName);
   };
@@ -310,311 +286,114 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* Desktop Navigation Links Strip */}
-          <nav className="hidden lg:flex items-center gap-5 xl:gap-7 font-medium text-sm text-slate-600">
-            <button
-              onClick={() => navigateTo('home')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'home'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
-            >
-              Home
-            </button>
-
-            <button
-              onClick={() => navigateTo('shop')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'shop'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
-            >
-              Shop
-            </button>
-
-            {/* OUR SERVICES INTERACTIVE DROPDOWN */}
-            <div
-              ref={servicesDropdownRef}
-              className="relative"
-              onMouseEnter={handleServicesMouseEnter}
-              onMouseLeave={handleServicesMouseLeave}
-            >
-              <button
-                id="header-services-menu-btn"
-                onClick={() => {
-                  setIsServicesDropdownOpen(!isServicesDropdownOpen);
-                }}
-                className={`transition-all relative pb-1 cursor-pointer flex items-center gap-1.5 font-medium ${
-                  currentView === 'services' || isServicesDropdownOpen
-                    ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                    : 'hover:text-[#0047AB] text-slate-600'
-                }`}
-                aria-haspopup="true"
-                aria-expanded={isServicesDropdownOpen}
-              >
-                <span>Our Services</span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                    isServicesDropdownOpen ? 'rotate-180 text-[#0047AB]' : 'text-slate-400'
-                  }`}
+          {/* Desktop Search Bar (Centered) */}
+          <div ref={searchRef} className="relative hidden md:block flex-1 max-w-lg lg:max-w-xl mx-4 sm:mx-6">
+            <form onSubmit={handleSearchSubmit} className="relative w-full">
+              <div className="relative px-4 py-2 bg-slate-100/90 hover:bg-slate-100 rounded-full flex items-center gap-2.5 w-full focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0047AB] focus-within:border-transparent transition-all border border-slate-200/80">
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  id="search-input-desktop"
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  placeholder="Search products, lighting fixtures, solar, electrical services..."
+                  className="w-full text-xs text-slate-900 placeholder:text-slate-400 bg-transparent focus:outline-hidden"
                 />
-              </button>
+              </div>
+            </form>
 
-              {/* SERVICES DROPDOWN MEGA-MENU */}
-              {isServicesDropdownOpen && (
-                <div
-                  id="services-dropdown-panel"
-                  className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[720px] bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-5 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
-                >
-                  {/* Dropdown Header */}
-                  <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-100">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0047AB] flex items-center justify-center">
-                        <Wrench className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-[#002D72] uppercase tracking-wider">
-                          Our Engineering & Installation Services
-                        </h4>
-                        <p className="text-[11px] text-slate-500 font-normal">
-                          Certified electrical engineers serving Lagos, Abuja, and nationwide
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setIsServicesDropdownOpen(false);
-                        navigateTo('services');
-                      }}
-                      className="text-xs font-bold text-[#0047AB] hover:text-[#002D72] flex items-center gap-1 group cursor-pointer"
-                    >
-                      <span>View All Services</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  </div>
-
-                  {/* 2-Column Multi-Grid for 10 Services */}
-                  <div className="grid grid-cols-2 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
-                    {ALL_COMPANY_SERVICES.map((service) => {
-                      const IconComponent = service.icon;
-                      return (
-                        <div
-                          key={service.id}
-                          onClick={() => handleServiceSelect(service.name)}
-                          className="group relative flex items-start gap-3 p-2.5 rounded-xl hover:bg-blue-50/70 border border-transparent hover:border-blue-100 transition-all cursor-pointer text-left"
-                        >
-                          <div
-                            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200 ${service.iconBg}`}
-                          >
-                            <IconComponent className="w-4 h-4" />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <h5 className="text-xs font-bold text-slate-900 group-hover:text-[#0047AB] transition-colors leading-tight">
-                                {service.name}
-                              </h5>
-                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 group-hover:bg-white group-hover:text-[#0047AB] transition-colors">
-                                {service.categoryTag}
-                              </span>
+            {/* Live Autocomplete Dropdown */}
+            {isSearchFocused && searchInput.trim().length > 0 && (
+              <div className="absolute top-full left-0 right-0 min-w-[320px] mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                {hasSearchResults ? (
+                  <>
+                    {(searchResults?.products || []).length > 0 && (
+                      <div className="p-3">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                          Products ({(searchResults?.products || []).length})
+                        </div>
+                        <div className="space-y-1.5">
+                          {(searchResults?.products || []).map((prod) => (
+                            <div
+                              key={prod.id}
+                              onClick={() => {
+                                setIsSearchFocused(false);
+                                navigateTo('product-detail', { productId: prod.id });
+                              }}
+                              className="flex items-center gap-3 p-2 rounded-xl hover:bg-blue-50/80 cursor-pointer transition-colors"
+                            >
+                              <img
+                                src={prod.images?.[0] || prod.image || ''}
+                                alt={prod.name}
+                                className="w-10 h-10 rounded-lg object-cover"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-xs font-semibold text-slate-900 truncate">
+                                  {prod.name}
+                                </h4>
+                                <div className="text-[11px] text-[#0047AB] font-bold">
+                                  {formatNaira(prod.discountPrice ?? prod.price)}
+                                </div>
+                              </div>
                             </div>
-                            <p className="text-[11px] text-slate-500 font-light leading-snug mt-0.5 line-clamp-2">
-                              {service.shortDesc}
-                            </p>
-                          </div>
+                          ))}
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Dropdown Bottom Quick-Action CTA Banner */}
-                  <div className="mt-3.5 pt-3 border-t border-slate-100 bg-slate-50/70 -mx-5 -mb-5 p-3.5 rounded-b-2xl flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-slate-700">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>COREN & NEMSA standard compliance • Guaranteed workmanship</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setIsServicesDropdownOpen(false);
-                          navigateTo('services-portal');
-                        }}
-                        className="px-3.5 py-1.5 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-                      >
-                        <span>⚡ Services Portal</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsServicesDropdownOpen(false);
-                          openServiceModal();
-                        }}
-                        className="px-3.5 py-1.5 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Wrench className="w-3 h-3" />
-                        <span>Book An Electrician</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => navigateTo('portfolio')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'portfolio'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
-            >
-              Projects
-            </button>
-
-            <button
-              onClick={() => navigateTo('about')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'about'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
-            >
-              About Us
-            </button>
-
-            <button
-              onClick={() => navigateTo('blog')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'blog'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
-            >
-              Blog
-            </button>
-
-            <button
-              onClick={() => navigateTo('contact')}
-              className={`transition-all relative pb-1 cursor-pointer ${
-                currentView === 'contact'
-                  ? 'text-[#0047AB] font-bold border-b-2 border-[#0047AB]'
-                  : 'hover:text-[#0047AB] text-slate-600'
-              }`}
-            >
-              Contact
-            </button>
-          </nav>
-
-          {/* Desktop Search Bar & Action Center */}
-          <div className="flex items-center gap-4 xl:gap-5">
-            {/* Desktop Search Bar with Live Suggestions */}
-            <div ref={searchRef} className="relative hidden md:block">
-              <form onSubmit={handleSearchSubmit} className="relative">
-                <div className="relative px-3.5 py-2 bg-slate-100/90 hover:bg-slate-100 rounded-full flex items-center gap-2.5 w-44 lg:w-56 focus-within:w-72 focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0047AB] focus-within:border-transparent transition-all border border-slate-200/80">
-                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                  <input
-                    id="search-input-desktop"
-                    type="text"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                    placeholder="Search products..."
-                    className="w-full text-xs text-slate-900 placeholder:text-slate-400 bg-transparent focus:outline-hidden"
-                  />
-                </div>
-              </form>
-
-              {/* Live Autocomplete Dropdown */}
-              {isSearchFocused && searchInput.trim().length > 0 && (
-                <div className="absolute top-full left-0 right-0 min-w-[300px] mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 divide-y divide-slate-100 max-h-96 overflow-y-auto">
-                  {hasSearchResults ? (
-                    <>
-                      {(searchResults?.products || []).length > 0 && (
-                        <div className="p-3">
-                          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                            Products ({(searchResults?.products || []).length})
-                          </div>
-                          <div className="space-y-1.5">
-                            {(searchResults?.products || []).map((prod) => (
-                              <div
-                                key={prod.id}
-                                onClick={() => {
-                                  setIsSearchFocused(false);
-                                  navigateTo('product-detail', { productId: prod.id });
-                                }}
-                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-blue-50/80 cursor-pointer transition-colors"
-                              >
-                                <img
-                                  src={prod.images?.[0] || prod.image || ''}
-                                  alt={prod.name}
-                                  className="w-10 h-10 rounded-lg object-cover"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="text-xs font-semibold text-slate-900 truncate">
-                                    {prod.name}
-                                  </h4>
-                                  <div className="text-[11px] text-[#0047AB] font-bold">
-                                    {formatNaira(prod.discountPrice ?? prod.price)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {(searchResults?.services || []).length > 0 && (
-                        <div className="p-3 bg-slate-50/60">
-                          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                            Electrical Services ({(searchResults?.services || []).length})
-                          </div>
-                          <div className="space-y-1.5">
-                            {(searchResults?.services || []).map((srv) => (
-                              <div
-                                key={srv.id}
-                                onClick={() => {
-                                  setIsSearchFocused(false);
-                                  navigateTo('services');
-                                }}
-                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-white cursor-pointer transition-colors"
-                              >
-                                <div className="w-8 h-8 rounded-lg bg-blue-100 text-[#0047AB] flex items-center justify-center shrink-0">
-                                  <Wrench className="w-4 h-4" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="text-xs font-semibold text-slate-900 truncate">
-                                    {srv.name}
-                                  </h4>
-                                  <span className="text-[10px] text-slate-500 line-clamp-1">
-                                    {srv.shortDesc}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="p-2.5 text-center bg-slate-100 text-xs">
-                        <button
-                          onClick={handleSearchSubmit}
-                          className="text-[#0047AB] font-semibold hover:underline cursor-pointer"
-                        >
-                          View all results for "{searchInput}" &rarr;
-                        </button>
                       </div>
-                    </>
-                  ) : (
-                    <div className="p-6 text-center text-xs text-slate-500">
-                      No products or services found for "{searchInput}". Try searching "Bulb", "Chandelier", or "Solar".
+                    )}
+
+                    {(searchResults?.services || []).length > 0 && (
+                      <div className="p-3 bg-slate-50/60">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                          Electrical Services ({(searchResults?.services || []).length})
+                        </div>
+                        <div className="space-y-1.5">
+                          {(searchResults?.services || []).map((srv) => (
+                            <div
+                              key={srv.id}
+                              onClick={() => {
+                                setIsSearchFocused(false);
+                                navigateTo('services');
+                              }}
+                              className="flex items-center gap-3 p-2 rounded-xl hover:bg-white cursor-pointer transition-colors"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-blue-100 text-[#0047AB] flex items-center justify-center shrink-0">
+                                <Wrench className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-xs font-semibold text-slate-900 truncate">
+                                  {srv.name}
+                                </h4>
+                                <span className="text-[10px] text-slate-500 line-clamp-1">
+                                  {srv.shortDesc}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="p-2.5 text-center bg-slate-100 text-xs">
+                      <button
+                        onClick={handleSearchSubmit}
+                        className="text-[#0047AB] font-semibold hover:underline cursor-pointer"
+                      >
+                        View all results for "{searchInput}" &rarr;
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </>
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    No products or services found for "{searchInput}". Try searching "Bulb", "Chandelier", or "Solar".
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Action Center on Right */}
+          <div className="flex items-center gap-3 sm:gap-4 shrink-0">
 
             {/* Action Icons */}
             <div className="flex items-center gap-3 text-slate-600">
@@ -1046,7 +825,7 @@ export const Header: React.FC = () => {
                         : 'text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Shop All Products
+                    Shop
                   </button>
 
                   {/* Accordion for Categories */}
@@ -1173,7 +952,7 @@ export const Header: React.FC = () => {
                         : 'text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Verified Projects
+                    Projects
                   </button>
 
                   <button
@@ -1201,7 +980,7 @@ export const Header: React.FC = () => {
                         : 'text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Technical Blog
+                    Blog
                   </button>
 
                   <button
@@ -1215,7 +994,7 @@ export const Header: React.FC = () => {
                         : 'text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Contact Showroom
+                    Contact
                   </button>
                 </nav>
               </div>
