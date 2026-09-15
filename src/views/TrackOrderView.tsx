@@ -11,14 +11,25 @@ import {
   Building,
   ShieldCheck,
   Calendar,
+  FileText,
+  CreditCard,
 } from 'lucide-react';
 import { OrderStatus } from '../types';
+import { OfficialReceiptModal } from '../components/OfficialReceiptModal';
+import { PaymentGatewayModal } from '../components/PaymentGatewayModal';
 
 export const TrackOrderView: React.FC = () => {
-  const { orders, formatNaira, openWhatsApp } = useStore();
-  const [searchCode, setSearchCode] = useState('');
-  const [searchedOrder, setSearchedOrder] = useState<any>((orders && orders[0]) || null);
-  const [hasSearched, setHasSearched] = useState(false);
+  const { orders, formatNaira, openWhatsApp, updateOrderPaymentStatus, navigationState } = useStore();
+  const initialSearch = navigationState?.orderNumber || '';
+  const [searchCode, setSearchCode] = useState(initialSearch);
+  const [searchedOrder, setSearchedOrder] = useState<any>(
+    (initialSearch
+      ? orders.find((o) => o.orderNumber === initialSearch)
+      : orders && orders[0]) || null
+  );
+  const [hasSearched, setHasSearched] = useState(Boolean(initialSearch));
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isPaymentGatewayOpen, setIsPaymentGatewayOpen] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +39,7 @@ export const TrackOrderView: React.FC = () => {
       (o) =>
         (o.orderNumber && o.orderNumber.toUpperCase() === clean) ||
         (o.customerPhone && o.customerPhone.includes(clean)) ||
+        (o.customer?.phone && o.customer.phone.includes(clean)) ||
         (o.id && o.id.toUpperCase() === clean)
     );
     setSearchedOrder(found || null);
@@ -52,9 +64,24 @@ export const TrackOrderView: React.FC = () => {
   };
 
   const currentStepIdx = searchedOrder ? getStepIndex(searchedOrder.status) : 0;
+  const isPaid = searchedOrder?.paymentStatus === 'paid' || searchedOrder?.paymentStatus === 'verified';
+  const grandTotal = searchedOrder?.total ?? searchedOrder?.totalAmount ?? 0;
+
+  const handlePaymentSuccess = (details: { reference: string; channel: string }) => {
+    if (searchedOrder) {
+      updateOrderPaymentStatus(searchedOrder.id, 'paid', details.reference, details.channel);
+      setSearchedOrder((prev: any) => ({
+        ...prev,
+        paymentStatus: 'paid',
+        paymentReference: details.reference,
+        paymentChannel: details.channel,
+      }));
+    }
+    setIsPaymentGatewayOpen(false);
+  };
 
   return (
-    <div id="track-order-page-view" className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-16 space-y-10">
+    <div id="track-order-page-view" className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-16 space-y-10 animate-fade-in">
       {/* Top Title & Search Input */}
       <div className="text-center space-y-3 max-w-xl mx-auto">
         <div className="w-12 h-12 rounded-full bg-[#0047AB]/10 text-[#0047AB] flex items-center justify-center mx-auto">
@@ -94,18 +121,28 @@ export const TrackOrderView: React.FC = () => {
           {/* Order Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
-              <span className="text-xs font-bold text-[#0047AB] bg-[#0047AB]/10 px-3 py-1 rounded-full">
-                Order #{searchedOrder.orderNumber}
-              </span>
-              <h2 className="text-lg font-bold text-slate-900 mt-1.5">
-                Recipient: {searchedOrder.customerName}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-[#0047AB] bg-[#0047AB]/10 px-3 py-1 rounded-full font-mono">
+                  Order #{searchedOrder.orderNumber}
+                </span>
+                <span className={`text-xs font-bold px-3 py-1 rounded-full font-mono uppercase ${
+                  isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {searchedOrder.paymentStatus || 'pending'}
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-slate-900 mt-2">
+                Recipient: {searchedOrder.customer?.fullName || searchedOrder.customerName || searchedOrder.deliveryAddress?.fullName}
               </h2>
             </div>
-            <div className="text-xs text-right sm:text-right">
-              <span className="text-slate-400 font-light">Order Date:</span>
-              <p className="font-semibold text-slate-800">
-                {new Date(searchedOrder.createdAt).toLocaleDateString()}
-              </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsReceiptModalOpen(true)}
+                className="py-2 px-4 rounded-full bg-[#002D72] hover:bg-blue-900 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-amber-300" />
+                <span>View Official Tax Receipt</span>
+              </button>
             </div>
           </div>
 
@@ -152,29 +189,45 @@ export const TrackOrderView: React.FC = () => {
                 <MapPin className="w-3.5 h-3.5 text-[#0047AB]" /> Delivery Address
               </span>
               <p className="text-slate-700 font-light">
-                {searchedOrder.deliveryAddress?.streetAddress || ''}, {searchedOrder.deliveryAddress?.city || ''},{' '}
-                {searchedOrder.deliveryAddress?.state || ''}
+                {searchedOrder.deliveryAddress?.streetAddress || searchedOrder.customer?.address || ''},{' '}
+                {searchedOrder.deliveryAddress?.city || searchedOrder.customer?.city || ''},{' '}
+                {searchedOrder.deliveryAddress?.state || searchedOrder.customer?.state || ''}
               </p>
-              <p className="text-slate-500 font-mono text-[11px]">Contact: {searchedOrder.customerPhone || 'N/A'}</p>
+              <p className="text-slate-500 font-mono text-[11px]">Contact: {searchedOrder.customerPhone || searchedOrder.customer?.phone || 'N/A'}</p>
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
               <span className="font-bold text-[#002D72] flex items-center gap-1.5">
                 <Truck className="w-3.5 h-3.5 text-emerald-600" /> Courier & Payment
               </span>
               <p className="text-slate-700 font-light">
-                Method: <strong className="uppercase">{(searchedOrder.paymentMethod || 'bank_transfer').replace('_', ' ')}</strong> ({searchedOrder.paymentStatus || 'pending'})
+                Method: <strong className="uppercase">{(searchedOrder.paymentMethod || 'card').replace(/_/g, ' ')}</strong>
+                {' • '}
+                <strong className={`uppercase ${isPaid ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}`}>
+                  {searchedOrder.paymentStatus || 'pending'}
+                </strong>
               </p>
-              <p className="text-slate-700 font-bold text-[#0047AB]">
-                Total Amount: {formatNaira(searchedOrder.total ?? searchedOrder.totalAmount ?? 0)}
-              </p>
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-slate-900 font-extrabold text-sm text-[#0047AB]">
+                  Total: {formatNaira(grandTotal)}
+                </p>
+                {!isPaid && (
+                  <button
+                    onClick={() => setIsPaymentGatewayOpen(true)}
+                    className="py-1 px-3 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <CreditCard className="w-3 h-3" />
+                    <span>Pay Online</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Items Preview */}
           <div className="space-y-3 pt-2">
             <h4 className="text-xs font-bold text-[#002D72] uppercase tracking-wider">
-              Package Contents
+              Package Contents ({searchedOrder.items?.length || 0})
             </h4>
             <div className="space-y-2">
               {(searchedOrder.items || []).map((item: any, i: number) => (
@@ -186,8 +239,10 @@ export const TrackOrderView: React.FC = () => {
                       className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-white"
                     />
                     <div>
-                      <h5 className="font-semibold text-slate-900">{item.productName || item.name}</h5>
-                      <span className="text-[11px] text-slate-500 font-light">Qty: {item.quantity}</span>
+                      <h5 className="font-semibold text-slate-900">{item.productName || item.title || item.name}</h5>
+                      <span className="text-[11px] text-slate-500 font-light">
+                        Qty: {item.quantity} {item.selectedVariant || item.variant ? `• ${item.selectedVariant || item.variant}` : ''}
+                      </span>
                     </div>
                   </div>
                   <div className="font-bold text-[#002D72]">{formatNaira((item.price || 0) * (item.quantity || 1))}</div>
@@ -205,7 +260,7 @@ export const TrackOrderView: React.FC = () => {
                   `Hello AjmanTech Logistics, I am inquiring on the delivery ETA for Order #${searchedOrder.orderNumber}.`
                 )
               }
-              className="py-2.5 px-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+              className="py-2.5 px-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
             >
               <MessageCircle className="w-4 h-4" />
               Chat with Logistics Dispatch on WhatsApp
@@ -225,6 +280,27 @@ export const TrackOrderView: React.FC = () => {
           </button>
         </div>
       ) : null}
+
+      {/* Official Receipt Modal */}
+      {searchedOrder && (
+        <OfficialReceiptModal
+          isOpen={isReceiptModalOpen}
+          onClose={() => setIsReceiptModalOpen(false)}
+          order={searchedOrder}
+        />
+      )}
+
+      {/* Payment Gateway Modal */}
+      {searchedOrder && (
+        <PaymentGatewayModal
+          isOpen={isPaymentGatewayOpen}
+          onClose={() => setIsPaymentGatewayOpen(false)}
+          amount={grandTotal}
+          customerEmail={searchedOrder.customerEmail || searchedOrder.customer?.email || 'customer@ajmantech.ng'}
+          customerName={searchedOrder.customerName || searchedOrder.customer?.fullName || 'Customer'}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
     </div>
   );
 };

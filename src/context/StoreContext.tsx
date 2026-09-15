@@ -7,6 +7,7 @@ import {
   ServiceItem,
   ServiceRequest,
   Order,
+  OrderItem,
   OrderStatus,
   UserAccount,
   ProjectPortfolio,
@@ -141,8 +142,9 @@ interface StoreContextType {
 
   // Orders
   orders: Order[];
-  createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'trackingHistory' | 'status'>) => Order;
+  createOrder: (orderData: Partial<Order> & Record<string, any>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus, note?: string) => void;
+  updateOrderPaymentStatus: (orderId: string, paymentStatus: 'pending' | 'paid' | 'verified', paymentReference?: string, paymentChannel?: string) => void;
   getOrderByIdOrNumber: (identifier: string) => Order | undefined;
 
   // Services
@@ -925,16 +927,84 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Orders
   const createOrder = (
-    orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'trackingHistory' | 'status'>
+    orderData: Partial<Order> & Record<string, any>
   ): Order => {
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const orderNumber = `AJM-${new Date().getFullYear()}-${randomNum}`;
+    const orderNumber = orderData.orderNumber || `AJM-${new Date().getFullYear()}-${randomNum}`;
+    const receiptNumber = orderData.receiptNumber || `INV-${new Date().getFullYear()}-${randomNum}`;
+
+    // Ensure items are populated from cart if not passed
+    const items: OrderItem[] = (orderData.items && orderData.items.length > 0)
+      ? orderData.items
+      : cart.map((c) => ({
+          productId: c.product.id,
+          title: c.product.name,
+          productName: c.product.name,
+          price: c.product.discountPrice ?? c.product.price,
+          quantity: c.quantity,
+          image: c.product.images?.[0] || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
+          productImage: c.product.images?.[0] || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
+          variant: c.selectedVariant,
+        }));
+
+    const calculatedSubtotal = orderData.subtotal ?? cartSubtotal;
+    const discountAmt = orderData.discountAmount ?? 0;
+    const delFee = orderData.deliveryFee ?? 0;
+    const installFee = (orderData.installationRequested || orderData.includesInstallation) ? 15000 : (orderData.installationFee ?? 0);
+    const finalTotal = orderData.total ?? orderData.totalAmount ?? (calculatedSubtotal - discountAmt + delFee + installFee);
+
+    const customerDetails = orderData.customer || {
+      fullName: orderData.customerName || orderData.deliveryAddress?.fullName || 'Valued Customer',
+      email: orderData.customerEmail || (orderData.deliveryAddress as any)?.email || 'customer@ajmantech.ng',
+      phone: orderData.customerPhone || orderData.deliveryAddress?.phone || '',
+      address: orderData.deliveryAddress?.streetAddress || orderData.deliveryAddress?.address || '',
+      state: orderData.deliveryAddress?.state || 'Lagos',
+      city: orderData.deliveryAddress?.city || 'Lagos',
+      notes: orderData.notes || orderData.deliveryNotes,
+    };
+
+    const isPaidOnline = orderData.paymentMethod === 'card' || orderData.paymentMethod === 'ussd' || orderData.paymentStatus === 'paid';
+    const paymentStatus = orderData.paymentStatus || (isPaidOnline ? 'paid' : 'pending');
+    const paymentReference = orderData.paymentReference || (isPaidOnline ? `PSTK_TXN_${Date.now()}_${randomNum}` : undefined);
+    const paymentChannel = orderData.paymentChannel || (orderData.paymentMethod === 'card' ? 'Debit Card (Paystack)' : orderData.paymentMethod === 'ussd' ? 'USSD Banking' : 'Bank Transfer');
+    const paidAt = isPaidOnline ? (orderData.paidAt || new Date().toISOString()) : undefined;
+
     const newOrder: Order = {
-      ...orderData,
-      id: 'ord-' + Date.now(),
+      id: orderData.id || ('ord-' + Date.now()),
       orderNumber,
-      status: 'placed',
-      createdAt: new Date().toISOString().split('T')[0],
+      receiptNumber,
+      items,
+      customer: customerDetails,
+      customerName: customerDetails.fullName,
+      customerEmail: customerDetails.email,
+      customerPhone: customerDetails.phone,
+      deliveryAddress: orderData.deliveryAddress || {
+        fullName: customerDetails.fullName,
+        phone: customerDetails.phone,
+        streetAddress: customerDetails.address,
+        address: customerDetails.address,
+        state: customerDetails.state,
+        city: customerDetails.city,
+      },
+      subtotal: calculatedSubtotal,
+      deliveryFee: delFee,
+      discountAmount: discountAmt,
+      promoCode: orderData.promoCode || orderData.appliedPromoCode,
+      appliedPromoCode: orderData.promoCode || orderData.appliedPromoCode,
+      total: finalTotal,
+      totalAmount: finalTotal,
+      paymentMethod: orderData.paymentMethod || 'bank_transfer',
+      paymentStatus,
+      paymentReference,
+      paymentChannel,
+      paidAt,
+      includesInstallation: Boolean(orderData.includesInstallation || orderData.installationRequested),
+      installationRequested: Boolean(orderData.includesInstallation || orderData.installationRequested),
+      installationFee: installFee,
+      notes: orderData.notes || customerDetails.notes,
+      status: isPaidOnline ? 'confirmed' : 'placed',
+      createdAt: orderData.createdAt || new Date().toISOString().split('T')[0],
+      estimatedDelivery: orderData.estimatedDelivery || (customerDetails.state.toLowerCase().includes('lagos') ? '24 - 48 Hours' : '2 - 4 Business Days'),
       trackingHistory: [
         {
           status: 'placed',
@@ -945,10 +1015,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         },
         {
           status: 'confirmed',
-          title: 'Order Confirmed',
-          description: 'Payment confirmation and inventory allocation in progress.',
-          timestamp: 'Pending',
-          completed: false,
+          title: isPaidOnline ? 'Payment Confirmed & Verified' : 'Payment Confirmation Pending',
+          description: isPaidOnline ? `Online payment (${paymentReference}) verified successfully.` : 'Awaiting transfer confirmation or POD inspection.',
+          timestamp: isPaidOnline ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending',
+          completed: isPaidOnline,
         },
         {
           status: 'processing',
@@ -1016,6 +1086,44 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     return newOrder;
+  };
+
+  const updateOrderPaymentStatus = (
+    orderId: string,
+    paymentStatus: 'pending' | 'paid' | 'verified',
+    paymentReference?: string,
+    paymentChannel?: string
+  ) => {
+    setOrders((prev) =>
+      prev.map((order) => {
+        if (order.id === orderId || order.orderNumber === orderId) {
+          const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const updatedHistory = order.trackingHistory.map((step) => {
+            if (step.status === 'confirmed' && (paymentStatus === 'paid' || paymentStatus === 'verified')) {
+              return {
+                ...step,
+                completed: true,
+                timestamp,
+                description: `Payment verified (${paymentReference || order.paymentReference || 'Bank Transfer'}). Ready for packaging.`,
+              };
+            }
+            return step;
+          });
+
+          return {
+            ...order,
+            paymentStatus,
+            paymentReference: paymentReference || order.paymentReference || `AJM_MANUAL_${Date.now()}`,
+            paymentChannel: paymentChannel || order.paymentChannel || 'Zenith Bank Transfer',
+            paidAt: paymentStatus !== 'pending' ? (order.paidAt || new Date().toISOString()) : order.paidAt,
+            status: paymentStatus !== 'pending' && order.status === 'placed' ? 'confirmed' : order.status,
+            trackingHistory: updatedHistory,
+          };
+        }
+        return order;
+      })
+    );
+    showToast(`Order payment status updated to "${paymentStatus.toUpperCase()}"!`, 'success');
   };
 
 
@@ -1917,6 +2025,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         orders,
         createOrder,
         updateOrderStatus,
+        updateOrderPaymentStatus,
         getOrderByIdOrNumber,
 
         serviceRequests,

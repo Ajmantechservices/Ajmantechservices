@@ -12,8 +12,11 @@ import {
   Wrench,
   Sparkles,
   MessageCircle,
+  Smartphone,
+  Lock,
 } from 'lucide-react';
 import { PaymentMethod } from '../types';
+import { PaymentGatewayModal } from '../components/PaymentGatewayModal';
 
 export const CheckoutView: React.FC = () => {
   const {
@@ -37,13 +40,14 @@ export const CheckoutView: React.FC = () => {
   const [streetAddress, setStreetAddress] = useState(currentUser?.defaultAddress?.streetAddress || '');
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [includeInstallation, setIncludeInstallation] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank_transfer');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card');
 
   // Promo Code
   const [promoCodeInput, setPromoCodeInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; percent: number } | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPaymentGatewayOpen, setIsPaymentGatewayOpen] = useState(false);
 
   // Delivery Fee Calculation based on Nigerian State
   const calculateDeliveryFee = () => {
@@ -103,6 +107,12 @@ export const CheckoutView: React.FC = () => {
       return;
     }
 
+    // If online card payment is selected, launch the secure payment gateway modal
+    if (paymentMethod === 'card') {
+      setIsPaymentGatewayOpen(true);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -120,6 +130,7 @@ export const CheckoutView: React.FC = () => {
         deliveryFee,
         discountAmount,
         paymentMethod,
+        paymentStatus: 'pending',
         appliedPromoCode: appliedPromo?.code,
         notes: deliveryNotes,
         installationRequested: includeInstallation,
@@ -131,6 +142,43 @@ export const CheckoutView: React.FC = () => {
       showToast('There was an error placing your order. Please try again.', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePaymentSuccess = (paymentDetails: {
+    reference: string;
+    channel: string;
+    paidAt: string;
+    amount: number;
+  }) => {
+    try {
+      const newOrder = createOrder({
+        customerName: fullName,
+        customerEmail: email || 'customer@ajmantech.ng',
+        customerPhone: phone,
+        deliveryAddress: {
+          fullName,
+          phone,
+          state,
+          city,
+          streetAddress,
+        },
+        deliveryFee,
+        discountAmount,
+        paymentMethod: 'card',
+        paymentStatus: 'paid',
+        paymentReference: paymentDetails.reference,
+        paymentChannel: paymentDetails.channel,
+        paidAt: paymentDetails.paidAt,
+        appliedPromoCode: appliedPromo?.code,
+        notes: deliveryNotes,
+        installationRequested: includeInstallation,
+      });
+
+      setIsPaymentGatewayOpen(false);
+      navigateTo('order-success', { orderId: newOrder.id, orderNumber: newOrder.orderNumber });
+    } catch (err) {
+      showToast('Payment was approved, but an error occurred saving the order.', 'error');
     }
   };
 
@@ -327,7 +375,65 @@ export const CheckoutView: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {/* Option 1: Direct Bank Transfer */}
+              {/* Option 1: Instant Online Payment via Paystack */}
+              <label
+                className={`flex flex-col p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                  paymentMethod === 'card'
+                    ? 'border-[#0047AB] bg-blue-50/40 shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="card"
+                      checked={paymentMethod === 'card'}
+                      onChange={() => setPaymentMethod('card')}
+                      className="text-[#0047AB] focus:ring-[#0047AB]"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-[#002D72] text-xs sm:text-sm">
+                          Instant Online Payment (Paystack Gateway)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold border border-emerald-300">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-light">
+                        Debit Card (Mastercard / Visa / Verve), USSD, or Dynamic Virtual Transfer
+                      </p>
+                    </div>
+                  </div>
+                  <CreditCard className="w-5 h-5 text-[#0047AB] shrink-0" />
+                </div>
+
+                {paymentMethod === 'card' && (
+                  <div className="mt-3 pt-3 border-t border-blue-200/60 text-xs text-slate-600 space-y-2 bg-white/80 p-3.5 rounded-xl">
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                      <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        Automated Official Tax Receipt & Invoice Issued Instantly
+                      </span>
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <Lock className="w-3 h-3" />
+                        256-Bit SSL Encrypted
+                      </span>
+                    </div>
+                    <div className="flex gap-2 text-[10px] font-mono text-slate-500">
+                      <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Verve</span>
+                      <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Mastercard</span>
+                      <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Visa</span>
+                      <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">USSD</span>
+                      <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Zenith Transfer</span>
+                    </div>
+                  </div>
+                )}
+              </label>
+
+              {/* Option 2: Direct Bank Transfer */}
               <label
                 className={`flex flex-col p-4 rounded-2xl border-2 transition-all cursor-pointer ${
                   paymentMethod === 'bank_transfer'
@@ -347,12 +453,12 @@ export const CheckoutView: React.FC = () => {
                     />
                     <div>
                       <span className="font-bold text-[#002D72] text-xs sm:text-sm">
-                        Direct Bank Transfer (Zenith Bank)
+                        Manual Direct Bank Transfer (Zenith Bank)
                       </span>
-                      <p className="text-[11px] text-slate-500 font-light">Most preferred & instant verification</p>
+                      <p className="text-[11px] text-slate-500 font-light">Transfer manually and submit receipt on WhatsApp</p>
                     </div>
                   </div>
-                  <Building className="w-5 h-5 text-[#0047AB] shrink-0" />
+                  <Building className="w-5 h-5 text-slate-600 shrink-0" />
                 </div>
 
                 {paymentMethod === 'bank_transfer' && (
@@ -385,33 +491,6 @@ export const CheckoutView: React.FC = () => {
                     </p>
                   </div>
                 )}
-              </label>
-
-              {/* Option 2: Card Payment */}
-              <label
-                className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${
-                  paymentMethod === 'card'
-                    ? 'border-[#0047AB] bg-blue-50/30 shadow-xs'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="card"
-                    checked={paymentMethod === 'card'}
-                    onChange={() => setPaymentMethod('card')}
-                    className="text-[#0047AB] focus:ring-[#0047AB]"
-                  />
-                  <div>
-                    <span className="font-bold text-[#002D72] text-xs sm:text-sm">
-                      Mastercard / Visa / Verve Debit Card
-                    </span>
-                    <p className="text-[11px] text-slate-500 font-light">Instant online card payment via secure gateway</p>
-                  </div>
-                </div>
-                <CreditCard className="w-5 h-5 text-emerald-600 shrink-0" />
               </label>
 
               {/* Option 3: Pay on Delivery */}
@@ -550,7 +629,12 @@ export const CheckoutView: React.FC = () => {
               className="w-full py-3.5 px-6 rounded-full bg-[#0047AB] hover:bg-[#002D72] active:bg-blue-900 text-white font-extrabold text-sm shadow-xl hover:shadow-blue-700/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {isSubmitting ? (
-                <span>Generating Order...</span>
+                <span>Processing Order...</span>
+              ) : paymentMethod === 'card' ? (
+                <>
+                  <CreditCard className="w-5 h-5 text-amber-300" />
+                  <span>Pay with Paystack ({formatNaira(grandTotal)})</span>
+                </>
               ) : (
                 <>
                   <CheckCircle2 className="w-5 h-5" />
@@ -578,6 +662,17 @@ export const CheckoutView: React.FC = () => {
           </div>
         </div>
       </form>
+
+      {/* Live Payment Gateway Modal */}
+      <PaymentGatewayModal
+        isOpen={isPaymentGatewayOpen}
+        onClose={() => setIsPaymentGatewayOpen(false)}
+        amount={grandTotal}
+        customerEmail={email || 'customer@ajmantech.ng'}
+        customerName={fullName}
+        customerPhone={phone}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
     </div>
   );
 };

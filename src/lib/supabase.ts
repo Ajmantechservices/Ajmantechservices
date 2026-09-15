@@ -1,8 +1,34 @@
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
-const env = (import.meta as any).env || {};
-const supabaseUrl: string = env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey: string = env.VITE_SUPABASE_ANON_KEY || '';
+const resolveEnv = (...keys: string[]): string => {
+  const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) ? (import.meta as any).env : {};
+  for (const k of keys) {
+    if (metaEnv[k] && typeof metaEnv[k] === 'string' && metaEnv[k].trim()) {
+      return metaEnv[k].trim();
+    }
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    for (const k of keys) {
+      if (process.env[k] && typeof process.env[k] === 'string' && process.env[k].trim()) {
+        return process.env[k].trim();
+      }
+    }
+  }
+  return '';
+};
+
+const supabaseUrl: string = resolveEnv(
+  'VITE_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'SUPABASE_URL'
+);
+
+const supabaseAnonKey: string = resolveEnv(
+  'VITE_SUPABASE_ANON_KEY',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_KEY'
+);
 
 export const isSupabaseConfigured = (): boolean => {
   return Boolean(

@@ -7,7 +7,11 @@ const DEFAULT_ADMIN_PASSWORD = 'Ayomide0148';
  * Common seed logic matching exact prompt requirements
  */
 async function runSeedAdminLogic(providedKey?: string) {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || providedKey;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+    providedKey;
 
   if (!serviceRoleKey) {
     return {
@@ -18,6 +22,7 @@ async function runSeedAdminLogic(providedKey?: string) {
 
   const supabaseUrl =
     process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL ||
     'https://ynrmthgxykbvuvtwhvlq.supabase.co';
 

@@ -84,7 +84,7 @@ export interface ServiceItem {
 
 export type ServiceRequestStatus = 'new' | 'contacted' | 'scheduled' | 'in_progress' | 'completed' | 'pending' | 'approved' | 'cancelled';
 
-export type PaymentMethod = 'bank_transfer' | 'card' | 'pay_on_delivery' | 'whatsapp';
+export type PaymentMethod = 'bank_transfer' | 'card' | 'pay_on_delivery' | 'whatsapp' | 'ussd';
 
 export type ProductCategory = string;
 
@@ -126,11 +126,14 @@ export interface OrderItem {
   quantity: number;
   image: string;
   variant?: string;
+  productName?: string;
+  productImage?: string;
 }
 
 export interface Order {
   id: string;
   orderNumber: string;
+  receiptNumber?: string;
   items: OrderItem[];
   customer: {
     fullName: string;
@@ -141,19 +144,37 @@ export interface Order {
     city: string;
     notes?: string;
   };
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  deliveryAddress?: {
+    fullName?: string;
+    phone?: string;
+    address?: string;
+    streetAddress?: string;
+    state?: string;
+    city?: string;
+  };
   subtotal: number;
   deliveryFee: number;
   discountAmount: number;
   promoCode?: string;
+  appliedPromoCode?: string;
   total: number;
-  paymentMethod: 'bank_transfer' | 'card' | 'pay_on_delivery' | 'whatsapp';
+  totalAmount?: number;
+  paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid' | 'verified';
+  paymentReference?: string;
+  paymentChannel?: string;
+  paidAt?: string;
   status: OrderStatus;
   trackingHistory: TrackingStep[];
   createdAt: string;
-  estimatedDelivery: string;
+  estimatedDelivery?: string;
   includesInstallation?: boolean;
+  installationRequested?: boolean;
   installationFee?: number;
+  notes?: string;
 }
 
 export interface UserAddress {

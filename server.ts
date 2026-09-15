@@ -38,6 +38,8 @@ async function startServer() {
     try {
       const serviceRoleKey =
         process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_KEY ||
+        process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
         (req.headers['x-service-role-key'] as string) ||
         req.body?.serviceRoleKey;
 
@@ -52,6 +54,7 @@ async function startServer() {
       const supabaseUrl =
         (req.body?.supabaseUrl as string) ||
         process.env.VITE_SUPABASE_URL ||
+        process.env.NEXT_PUBLIC_SUPABASE_URL ||
         process.env.SUPABASE_URL ||
         'https://ynrmthgxykbvuvtwhvlq.supabase.co';
 
