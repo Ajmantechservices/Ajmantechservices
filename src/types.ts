@@ -208,25 +208,6 @@ export interface ProjectPortfolio {
   completedYear: string;
 }
 
-export interface BlogPost {
-  id: string;
-  title: string;
-  slug: string;
-  excerpt: string;
-  content: string | string[];
-  category?: string;
-  date?: string;
-  author?: string;
-  author_id?: string;
-  readTime?: string;
-  image?: string;
-  featured_image?: string;
-  published?: boolean;
-  relatedProductIds?: string[];
-  created_at?: string;
-  updated_at?: string;
-}
-
 export interface Review {
   id: string;
   productId: string;
@@ -305,8 +286,6 @@ export type ViewState =
   | 'service-booking'
   | 'about'
   | 'portfolio'
-  | 'blog'
-  | 'blog-detail'
   | 'contact'
   | 'cart'
   | 'checkout'

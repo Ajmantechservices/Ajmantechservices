@@ -972,20 +972,6 @@ export const Header: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
-                      navigateTo('blog');
-                    }}
-                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
-                      currentView === 'blog'
-                        ? 'bg-blue-50 text-blue-700 font-bold'
-                        : 'text-slate-800 hover:bg-slate-50'
-                    }`}
-                  >
-                    Blog
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
                       navigateTo('contact');
                     }}
                     className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${

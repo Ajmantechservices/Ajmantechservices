@@ -346,14 +346,6 @@ export const Footer: React.FC = () => {
               </li>
               <li>
                 <button
-                  onClick={() => navigateTo('blog')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  📰 Electrical & Lighting Blog
-                </button>
-              </li>
-              <li>
-                <button
                   onClick={() => navigateTo('contact')}
                   className="hover:text-amber-300 transition-colors cursor-pointer"
                 >

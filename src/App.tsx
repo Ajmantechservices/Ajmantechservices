@@ -15,8 +15,6 @@ import { ProductDetailView } from './views/ProductDetailView';
 import { ServicesView } from './views/ServicesView';
 import { CategoriesView } from './views/CategoriesView';
 import { PortfolioView } from './views/PortfolioView';
-import { BlogView } from './views/BlogView';
-import { BlogPostView } from './views/BlogPostView';
 import { AboutView } from './views/AboutView';
 import { ContactView } from './views/ContactView';
 import { CheckoutView } from './views/CheckoutView';
@@ -51,10 +49,6 @@ const MainRouter: React.FC = () => {
         return <CategoriesView />;
       case 'portfolio':
         return <PortfolioView />;
-      case 'blog':
-        return <BlogView />;
-      case 'blog-detail':
-        return <BlogPostView />;
       case 'about':
         return <AboutView />;
       case 'contact':

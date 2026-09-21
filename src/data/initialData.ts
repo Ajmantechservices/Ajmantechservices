@@ -1,4 +1,4 @@
-import { Product, Category, ServiceItem, ProjectPortfolio, BlogPost, Review, FAQItem, StoreSettings } from '../types';
+import { Product, Category, ServiceItem, ProjectPortfolio, Review, FAQItem, StoreSettings } from '../types';
 
 export const INITIAL_CATEGORIES: Category[] = [
   {
@@ -834,86 +834,6 @@ export const INITIAL_PROJECTS: ProjectPortfolio[] = [
     description: 'Supplied and installed 40 high-bay industrial lights, secondary breaker panels, and automated emergency lighting systems for a multi-tenant shopping complex.',
     image: 'https://images.unsplash.com/photo-1508873696983-2df5293cb395?q=80&w=1000&auto=format&fit=crop',
     completedYear: '2024',
-  },
-];
-
-export const INITIAL_BLOG_POSTS: BlogPost[] = [
-  {
-    id: 'post-01',
-    title: 'How to Choose the Right Bulb for Every Room in Your Home',
-    slug: 'how-to-choose-the-right-bulb-for-every-room',
-    excerpt: 'Discover the golden rules of lumens, colour temperature, and beam angles to create the perfect mood in living rooms, kitchens, and bedrooms.',
-    content: [
-      'Lighting is more than just brightening a room—it dictates how you feel, how productive you are, and how your interior design looks.',
-      '1. Living Room: The living room is a multi-functional space. We recommend warm white (3000K) for general evening relaxation, paired with directional spotlights or floor lamps for reading.',
-      '2. Kitchen: Kitchens need high-clarity daylight (4500K - 6500K) over countertops and cooking islands so you can prepare meals safely without shadowing.',
-      '3. Bedroom: Keep bedrooms soft and cozy. 2700K to 3000K warm lighting encourages melatonin production, helping you sleep soundly.',
-      '4. Bathroom: Use high-CRI (Color Rendering Index) lighting around vanity mirrors so colors look natural when applying makeup or grooming.',
-    ],
-    category: 'Lighting Guide',
-    date: 'February 18, 2026',
-    author: 'Engr. Joshua Ajayi (Lead Electrical Consultant)',
-    readTime: '4 min read',
-    image: 'https://images.unsplash.com/photo-1550985616-10810253b84d?q=80&w=1000&auto=format&fit=crop',
-    relatedProductIds: ['prod-03', 'prod-04', 'prod-01'],
-  },
-  {
-    id: 'post-02',
-    title: 'Why Your Inverter Battery Dies Quickly (and How to Make it Last 5+ Years)',
-    slug: 'why-your-inverter-battery-dies-quickly',
-    excerpt: 'Learn the common mistakes Nigerian homeowners make with tubular and lithium inverter batteries, and the crucial steps to prevent premature battery death.',
-    content: [
-      'A quality inverter system should give you peace of mind, not frequent battery replacement bills. Here is why batteries degrade prematurely:',
-      '1. Deep Discharging Beyond Safe Limits: Draining lead-acid/tubular batteries below 50% depth of discharge rapidly cuts their cycle life. Modern LiFePO4 Lithium batteries handle 80-90% DOD safely.',
-      '2. Incorrect Charging Voltage: If your inverter charger is set to the wrong battery chemistry profile, it either undercharges (causing sulfation) or overcharges (boiling electrolyte).',
-      '3. High Room Temperatures: Inverter batteries stored in hot, unventilated generator houses or closed corridors degrade twice as fast. Keep battery banks in a cool, ventilated area.',
-      '4. Unequal Battery Balancing: When connecting batteries in series (e.g. 24V or 48V banks), always use an active battery equalizer to prevent one battery from overcharging while others starve.',
-    ],
-    category: 'Solar & Inverters',
-    date: 'January 29, 2026',
-    author: 'Engr. Tunde Williams (Solar Systems Engineer)',
-    readTime: '6 min read',
-    image: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1000&auto=format&fit=crop',
-    relatedProductIds: ['prod-07', 'prod-02'],
-  },
-  {
-    id: 'post-03',
-    title: 'Warm White vs Cool White: Which Light Is Better for Nigerian Homes?',
-    slug: 'warm-white-vs-cool-white-which-light-is-better',
-    excerpt: 'Compare the psychological and visual differences between 3000K warm white and 6500K daylight, and where to use each tone effectively.',
-    content: [
-      'One of the most frequent questions our showroom team gets is: "Should I buy white light or warm light?" The answer is: you actually need both in different areas of your home.',
-      'Warm White (2700K - 3000K): Emits a gentle golden glow similar to sunset or candlelight. It is calming, hides minor wall imperfections, and makes living rooms and master bedrooms feel luxurious.',
-      'Cool White / Daylight (6000K - 6500K): Produces crisp, energetic white light. It boosts alertness and is ideal for security lights, compound floodlights, offices, and workshops.',
-      'Neutral / Natural White (4000K - 4500K): The perfect middle ground. Ideal for modern minimalist apartments, kitchen islands, and clothing boutiques.',
-      'Pro Tip: Use Tri-Color LED fixtures (like our Royale Chandeliers) that let you toggle between warm and cool light at the flip of a switch or remote!',
-    ],
-    category: 'Interior Design',
-    date: 'January 14, 2026',
-    author: 'AjmanTech Editorial Team',
-    readTime: '5 min read',
-    image: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?q=80&w=1000&auto=format&fit=crop',
-    relatedProductIds: ['prod-01', 'prod-04', 'prod-05'],
-  },
-  {
-    id: 'post-04',
-    title: '5 Things to Consider Before Buying a Luxury Chandelier in Nigeria',
-    slug: '5-things-to-consider-before-buying-a-chandelier',
-    excerpt: 'Avoid sizing errors and mounting issues with these 5 expert tips on ceiling height, weight capacity, and crystal maintenance.',
-    content: [
-      'Buying a chandelier is an exciting upgrade for your property. To ensure your purchase is a total success, check these 5 factors before buying:',
-      '1. Ceiling Height and Drop Length: Measure from the floor to your finished POP ceiling. For standard 3m ceiling rooms, choose semi-flush or compact ring chandeliers. For double-volume duplex voids, choose long spiral or 3-tier grand drops.',
-      '2. Room Proportions: A small chandelier in a large parlor looks lost, while an oversized one overwhelms the space. A handy formula: add room width (ft) + length (ft); the sum in inches is a great chandelier diameter guide.',
-      '3. Ceiling Weight Support: Never screw a heavy crystal fixture into mere POP plasterboard. Ensure your electrician anchors directly into concrete slabs or wooden joists.',
-      '4. Light Output & Dimmability: Ensure your chandelier has dimming features so it can function as both ambient mood lighting and bright illumination.',
-      '5. Professional Assembly: Assemble crystals with white gloves to prevent fingerprint oils that dull crystal brilliance.',
-    ],
-    category: 'Buying Guide',
-    date: 'December 20, 2025',
-    author: 'Engr. Joshua Ajayi',
-    readTime: '5 min read',
-    image: 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=1000&auto=format&fit=crop',
-    relatedProductIds: ['prod-01', 'prod-09', 'prod-08'],
   },
 ];
 
