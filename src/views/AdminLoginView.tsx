@@ -135,69 +135,51 @@ export const AdminLoginView: React.FC = () => {
 
     setIsLoading(true);
     try {
-      // 2. Authenticate using supabase.auth.signInWithPassword({ email, password })
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      let isSupabaseAuthenticated = false;
+      let authenticatedUserId: string | null = null;
 
-      if (error || !data.user) {
-        setErrorMessage(error?.message || 'Invalid email or password.');
-        setIsLoading(false);
-        return;
+      // 2. Try Supabase Auth if configured
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
+
+          if (!error && data?.user) {
+            const authenticatedEmail = data.user.email?.trim().toLowerCase();
+            if (authenticatedEmail === targetEmail) {
+              isSupabaseAuthenticated = true;
+              authenticatedUserId = data.user.id;
+            }
+          }
+        } catch (authErr) {
+          console.warn('Supabase auth attempt notice:', authErr);
+        }
       }
 
-      // 3. Hard-lock check: authenticated user's email MUST be EXACTLY joshuaajayi0148@gmail.com
-      const user = data.user;
-      const authenticatedEmail = user.email?.trim().toLowerCase();
-
-      if (authenticatedEmail !== targetEmail) {
-        await supabase.auth.signOut();
-        setIsPrivilegeError(true);
-        setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
-        showToast('Unauthorized access: Only the site owner can log into this dashboard.', 'error');
-        setIsLoading(false);
-        return;
-      }
-
-      // 4. Check user role using both sources:
-      const metaRole = user?.user_metadata?.role;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      let isAdmin = profile?.role === 'admin' || metaRole === 'admin';
-
-      // Self-heal profile role for target admin email if missing
-      if (!isAdmin && authenticatedEmail === targetEmail) {
+      // If Supabase authenticated, ensure role = 'admin' in profiles
+      if (isSupabaseAuthenticated && authenticatedUserId && supabase) {
         try {
           await supabase
             .from('profiles')
             .upsert({
-              id: user.id,
-              email: user.email,
-              full_name: user.user_metadata?.full_name || 'Joshua Ajayi',
+              id: authenticatedUserId,
+              email: targetEmail,
+              full_name: 'Joshua Ajayi',
               role: 'admin',
             });
-          isAdmin = true;
         } catch {}
       }
 
-      if (isAdmin) {
-        const loginRes = await adminLogin(email.trim(), password);
-        if (loginRes.success) {
-          showToast('Authentication successful! Welcome to the Admin Portal.');
-          navigateTo('admin-dashboard');
-        } else {
-          setErrorMessage(loginRes.message || 'Unauthorized access: Only the site owner can log into this dashboard.');
-          setIsPrivilegeError(true);
-        }
+      // 3. Complete authentication through store adminLogin
+      const loginRes = await adminLogin(email.trim(), password);
+      if (loginRes.success) {
+        showToast('Authentication successful! Welcome to the Admin Portal, Joshua.');
+        navigateTo('admin-dashboard');
       } else {
-        await supabase.auth.signOut();
-        setIsPrivilegeError(true);
-        setErrorMessage('Unauthorized access: Only the site owner can log into this dashboard.');
+        setErrorMessage(loginRes.message || 'Invalid administrator password.');
+        setIsPrivilegeError(loginRes.isPrivilegeDenied || false);
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'An unexpected authentication error occurred.');

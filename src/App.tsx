@@ -79,9 +79,10 @@ const MainRouter: React.FC = () => {
   };
 
   const isAdminPortalView =
+    currentView === 'admin' ||
     currentView === 'admin-login' ||
     currentView === 'admin-signup' ||
-    ((currentView === 'admin' || currentView === 'admin-dashboard') && isAdmin);
+    currentView === 'admin-dashboard';
 
   if (currentView === 'services-portal') {
     return (
@@ -96,7 +97,7 @@ const MainRouter: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-amber-400 selection:text-slate-950">
-      {/* Header - shown across all views; in admin portal it provides store navigation & admin status */}
+      {/* Header - provides store navigation & admin status */}
       <Header />
 
       {/* Main Content Area */}
@@ -104,8 +105,8 @@ const MainRouter: React.FC = () => {
         {renderView()}
       </main>
 
-      {/* Footer - hidden on dedicated admin dashboard for cleaner side-nav workspace if desired */}
-      <Footer />
+      {/* Footer - hidden on dedicated admin views for clean, private workspace */}
+      {!isAdminPortalView && <Footer />}
 
       {/* Overlays & Interactive Drawers/Modals */}
       <QuickViewModal />

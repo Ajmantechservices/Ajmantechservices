@@ -372,15 +372,6 @@ export const Footer: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span>© {new Date().getFullYear()} AjmanTech Services Nigeria Ltd. All Rights Reserved.</span>
             <span className="text-amber-300 font-medium hidden sm:inline">• “Let There Be Light”</span>
-            <span className="text-slate-500">•</span>
-            <button
-              id="footer-admin-link"
-              onClick={() => navigateTo('admin')}
-              className="text-xs text-slate-500 hover:text-slate-400 transition-colors inline-flex items-center gap-1 cursor-pointer font-normal"
-              title="Admin Access"
-            >
-              Admin
-            </button>
           </div>
 
           <div className="flex items-center gap-3 text-blue-200 text-[11px]">

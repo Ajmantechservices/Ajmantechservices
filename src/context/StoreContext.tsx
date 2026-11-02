@@ -120,7 +120,13 @@ interface StoreContextType {
   // Auth & Profile
   currentUser: UserAccount | null;
   login: (emailOrPhone: string, pass: string) => { success: boolean; message: string };
-  register: (fullName: string, email: string, phone: string, pass: string) => { success: boolean; message: string };
+  loginWithGoogle: (googleUser?: { fullName?: string; email: string }) => { success: boolean; message: string };
+  register: (
+    fullNameOrData: string | { fullName: string; email: string; phone: string; password?: string; role?: string },
+    email?: string,
+    phone?: string,
+    pass?: string
+  ) => { success: boolean; message: string };
   logout: () => void;
   adminLogin: (email: string, pass: string) => Promise<{ success: boolean; message: string; isPrivilegeDenied?: boolean }>;
   adminSignUp: (fullName: string, email: string, pass: string) => Promise<{ success: boolean; message: string }>;
@@ -172,6 +178,7 @@ const STORAGE_KEYS = {
   SERVICE_REQUESTS: 'ajmantech_service_requests_v1',
   USER: 'ajmantech_user_v1',
   IS_ADMIN: 'ajmantech_is_admin_v1',
+  REGISTERED_USERS: 'ajmantech_registered_customers_v1',
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -179,11 +186,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const getInitialView = (): ViewState => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
-      if (path === '/admin/login' || path.startsWith('/admin/login')) return 'admin-login';
-      if (path === '/admin/dashboard' || path === '/admin' || path.startsWith('/admin/dashboard')) return 'admin-dashboard';
+      if (path === '/admin' || path === '/admin/' || path === '/admin/login' || path.startsWith('/admin/login')) return 'admin';
+      if (path === '/admin/dashboard' || path.startsWith('/admin/dashboard')) return 'admin-dashboard';
       if (path === '/admin/signup') return 'admin-signup';
       if (path === '/shop') return 'shop';
       if (path === '/services') return 'services';
+      if (path === '/account') return 'account';
+      if (path === '/wishlist') return 'wishlist';
     }
     return 'home';
   };
@@ -265,45 +274,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return loaded;
   });
 
-  // User State
+  // User State: Signed out by default until an actual user creates an account or logs in
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     const storedUser = loadStored<UserAccount | null>(STORAGE_KEYS.USER, null);
-    if (!storedUser) {
-      // Default demo customer profile for easy preview
-      const demoUser: UserAccount = {
-        id: 'usr-demo-01',
-        fullName: 'Engr. Joshua Ajayi',
-        email: 'joshuaajayi0148@gmail.com',
-        phone: '+234 807 532 9182',
-        role: 'customer',
-        addresses: [
-          {
-            id: 'addr-01',
-            title: 'Home Address',
-            fullAddress: 'No. 24 Admiralty Way, Lekki Phase 1',
-            city: 'Lekki',
-            state: 'Lagos',
-            phone: '+234 807 532 9182',
-            isDefault: true,
-          },
-          {
-            id: 'addr-02',
-            title: 'Office / Site',
-            fullAddress: 'Plot 10, Central Business District, Abuja FCT',
-            city: 'Abuja Municipal',
-            state: 'Abuja (FCT)',
-            phone: '+234 802 345 6789',
-            isDefault: false,
-          },
-        ],
-        createdAt: '2025-01-10',
-      };
-      return demoUser;
+    // Purge any legacy mock demo user or old test account from localStorage
+    if (storedUser && (storedUser.id === 'usr-demo-01' || storedUser.email === 'admin@ajmantech.ng')) {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
+        } catch {}
+      }
+      return null;
     }
     return storedUser;
   });
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => loadStored(STORAGE_KEYS.IS_ADMIN, false));
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    const storedAdmin = loadStored<boolean>(STORAGE_KEYS.IS_ADMIN, false);
+    const storedUser = loadStored<UserAccount | null>(STORAGE_KEYS.USER, null);
+    // Strictly require target admin email and admin role
+    if (!storedUser || storedUser.email?.toLowerCase().trim() !== TARGET_ADMIN_EMAIL.toLowerCase() || storedUser.role !== 'admin') {
+      return false;
+    }
+    return storedAdmin;
+  });
+
+  // Registered Customer Accounts database in localStorage
+  const [registeredUsers, setRegisteredUsers] = useState<Array<{
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    password?: string;
+    createdAt: string;
+    addresses?: any[];
+  }>>(() => loadStored(STORAGE_KEYS.REGISTERED_USERS, []));
 
   // Cart & Wishlist
   const [cart, setCart] = useState<CartItem[]>(() => loadStored(STORAGE_KEYS.CART, []));
@@ -487,15 +493,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+      if (currentUser) {
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+      }
     } catch (e) { console.error(e); }
   }, [currentUser]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEYS.IS_ADMIN, JSON.stringify(isAdmin));
+      if (isAdmin && currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()) {
+        localStorage.setItem(STORAGE_KEYS.IS_ADMIN, JSON.stringify(true));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
+      }
     } catch (e) { console.error(e); }
-  }, [isAdmin]);
+  }, [isAdmin, currentUser]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(registeredUsers));
+    } catch (e) { console.error(e); }
+  }, [registeredUsers]);
 
   // Initial Supabase Sync when environment variables are configured
   useEffect(() => {
@@ -629,11 +649,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
-      if (path === '/admin/login') setCurrentView('admin-login');
-      else if (path === '/admin/dashboard' || path === '/admin') setCurrentView('admin-dashboard');
+      if (path === '/admin' || path === '/admin/' || path === '/admin/login') setCurrentView('admin');
+      else if (path === '/admin/dashboard') setCurrentView('admin-dashboard');
       else if (path === '/admin/signup') setCurrentView('admin-signup');
       else if (path === '/shop') setCurrentView('shop');
       else if (path === '/services') setCurrentView('services');
+      else if (path === '/account') setCurrentView('account');
+      else if (path === '/wishlist') setCurrentView('wishlist');
       else if (path === '/') setCurrentView('home');
     };
     window.addEventListener('popstate', handlePopState);
@@ -657,9 +679,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (typeof window !== 'undefined' && window.history) {
       let targetPath = '/';
-      if (view === 'admin-login') targetPath = '/admin/login';
-      else if (view === 'admin-dashboard' || view === 'admin') targetPath = '/admin/dashboard';
+      if (view === 'admin' || view === 'admin-login') targetPath = '/admin';
+      else if (view === 'admin-dashboard') targetPath = '/admin';
       else if (view === 'admin-signup') targetPath = '/admin/signup';
+      else if (view === 'account') targetPath = '/account';
+      else if (view === 'wishlist') targetPath = '/wishlist';
       else if (view === 'shop') targetPath = '/shop';
       else if (view === 'services') targetPath = '/services';
       else if (view === 'portfolio') targetPath = '/portfolio';
@@ -1116,38 +1140,103 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     showToast('Service ticket updated successfully!');
   };
 
-  // Auth
-  const login = (emailOrPhone: string, pass: string) => {
-    // Admin back-door for instant evaluation
-    if (emailOrPhone.toLowerCase() === 'admin@ajmantech.ng' || pass === 'admin123' || pass === 'ajmantech') {
-      setIsAdmin(true);
-      setCurrentUser({
-        id: 'usr-admin-01',
-        fullName: 'AjmanTech Administrator',
-        email: 'admin@ajmantech.ng',
-        phone: '+234 802 345 6789',
-        role: 'admin',
-        addresses: [],
-        createdAt: '2024-01-01',
-      });
-      showToast('Welcome back, AjmanTech Administrator!');
-      return { success: true, message: 'Admin login successful' };
+  // Customer Auth
+  const login = (emailOrPhone: string, pass: string): { success: boolean; message: string } => {
+    const input = emailOrPhone.trim().toLowerCase();
+
+    // 1. Search existing registered customers in store
+    const found = registeredUsers.find(
+      (u) => u.email.toLowerCase() === input || u.phone.trim() === emailOrPhone.trim()
+    );
+
+    if (found) {
+      if (found.password && found.password !== pass) {
+        return { success: false, message: 'Incorrect password. Please verify and try again.' };
+      }
+
+      const sessionUser: UserAccount = {
+        id: found.id,
+        fullName: found.fullName,
+        email: found.email,
+        phone: found.phone,
+        role: 'customer',
+        addresses: found.addresses || [],
+        createdAt: found.createdAt ? found.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+      };
+      setCurrentUser(sessionUser);
+      showToast(`Welcome back, ${sessionUser.fullName}!`);
+      return { success: true, message: 'Login successful' };
     }
 
-    // Customer login
-    const user: UserAccount = {
-      id: 'usr-' + Date.now(),
-      fullName: emailOrPhone.includes('@') ? emailOrPhone.split('@')[0] : 'AjmanTech Customer',
-      email: emailOrPhone.includes('@') ? emailOrPhone : 'customer@ajmantech.ng',
-      phone: emailOrPhone.includes('@') ? '+234 802 345 6789' : emailOrPhone,
+    // 2. Allow direct customer sign-in with valid email or phone
+    if ((input.includes('@') || emailOrPhone.trim().length >= 10) && pass.length >= 4) {
+      const generatedName = input.includes('@')
+        ? input.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+        : 'AjmanTech Customer';
+      
+      const newCustomer = {
+        id: 'usr-' + Date.now(),
+        fullName: generatedName,
+        email: input.includes('@') ? input : `${emailOrPhone.trim()}@customer.ajmantech.ng`,
+        phone: input.includes('@') ? '+234 802 345 6789' : emailOrPhone.trim(),
+        password: pass,
+        createdAt: new Date().toISOString(),
+        addresses: [],
+      };
+
+      setRegisteredUsers((prev) => [newCustomer, ...prev]);
+
+      const sessionUser: UserAccount = {
+        id: newCustomer.id,
+        fullName: newCustomer.fullName,
+        email: newCustomer.email,
+        phone: newCustomer.phone,
+        role: 'customer',
+        addresses: [],
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+      setCurrentUser(sessionUser);
+      showToast(`Welcome to AjmanTech, ${sessionUser.fullName}!`);
+      return { success: true, message: 'Login successful' };
+    }
+
+    return {
+      success: false,
+      message: 'Account not found. Please create a customer account with your name and email.',
+    };
+  };
+
+  const loginWithGoogle = (googleUser?: { fullName?: string; email: string }): { success: boolean; message: string } => {
+    const targetEmail = (googleUser?.email || 'customer@gmail.com').trim().toLowerCase();
+    const targetName = googleUser?.fullName?.trim() || 
+      targetEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    let existing = registeredUsers.find((u) => u.email.toLowerCase() === targetEmail);
+    if (!existing) {
+      existing = {
+        id: 'usr-g-' + Date.now(),
+        fullName: targetName,
+        email: targetEmail,
+        phone: '+234 800 000 0000',
+        createdAt: new Date().toISOString(),
+        addresses: [],
+      };
+      setRegisteredUsers((prev) => [existing!, ...prev]);
+    }
+
+    const sessionUser: UserAccount = {
+      id: existing.id,
+      fullName: existing.fullName,
+      email: existing.email,
+      phone: existing.phone,
       role: 'customer',
-      addresses: [],
-      createdAt: new Date().toISOString().split('T')[0],
+      addresses: existing.addresses || [],
+      createdAt: existing.createdAt ? existing.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
     };
 
-    setCurrentUser(user);
-    showToast(`Welcome, ${user.fullName}!`);
-    return { success: true, message: 'Login successful' };
+    setCurrentUser(sessionUser);
+    showToast(`Signed in with Google as ${sessionUser.fullName}!`);
+    return { success: true, message: 'Signed in with Google' };
   };
 
   const adminLogin = async (email: string, pass: string) => {
@@ -1220,38 +1309,91 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     await signOutAdminWithSupabase();
     setIsAdmin(false);
     setCurrentUser(null);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
+      } catch {}
+    }
     showToast('Logged out of Admin Portal.', 'info');
   };
 
-  const register = (fullName: string, email: string, phone: string, _pass: string) => {
-    const newUser: UserAccount = {
+  const register = (
+    fullNameOrData: string | { fullName: string; email: string; phone: string; password?: string; role?: string },
+    email?: string,
+    phone?: string,
+    pass?: string
+  ): { success: boolean; message: string } => {
+    let nameVal = '';
+    let emailVal = '';
+    let phoneVal = '';
+    let passVal = '';
+
+    if (typeof fullNameOrData === 'string') {
+      nameVal = fullNameOrData;
+      emailVal = email || '';
+      phoneVal = phone || '';
+      passVal = pass || '';
+    } else if (fullNameOrData && typeof fullNameOrData === 'object') {
+      nameVal = fullNameOrData.fullName || '';
+      emailVal = fullNameOrData.email || '';
+      phoneVal = fullNameOrData.phone || '';
+      passVal = fullNameOrData.password || '';
+    }
+
+    nameVal = nameVal.trim();
+    emailVal = emailVal.trim().toLowerCase();
+    phoneVal = phoneVal.trim();
+
+    if (!nameVal || !emailVal) {
+      return { success: false, message: 'Please provide your full name and email address.' };
+    }
+
+    // Check if account already registered
+    const existing = registeredUsers.find(
+      (u) => u.email.toLowerCase() === emailVal || (phoneVal && u.phone === phoneVal)
+    );
+    if (existing) {
+      return { success: false, message: 'An account with this email address already exists. Please sign in.' };
+    }
+
+    const newCustomer = {
       id: 'usr-' + Date.now(),
-      fullName,
-      email,
-      phone,
+      fullName: nameVal,
+      email: emailVal,
+      phone: phoneVal || '+234 800 000 0000',
+      password: passVal,
+      createdAt: new Date().toISOString(),
+      addresses: [],
+    };
+
+    setRegisteredUsers((prev) => [newCustomer, ...prev]);
+
+    const sessionUser: UserAccount = {
+      id: newCustomer.id,
+      fullName: newCustomer.fullName,
+      email: newCustomer.email,
+      phone: newCustomer.phone,
       role: 'customer',
-      addresses: [
-        {
-          id: 'addr-' + Date.now(),
-          title: 'Primary Delivery Address',
-          fullAddress: 'Lagos, Nigeria',
-          city: 'Lagos',
-          state: 'Lagos',
-          phone,
-          isDefault: true,
-        },
-      ],
+      addresses: [],
       createdAt: new Date().toISOString().split('T')[0],
     };
-    setCurrentUser(newUser);
-    showToast(`Account created! Welcome to AjmanTech, ${fullName}.`);
+
+    setCurrentUser(sessionUser);
+    showToast(`Account successfully created! Welcome, ${sessionUser.fullName}.`);
     return { success: true, message: 'Registration successful' };
   };
 
   const logout = () => {
     setCurrentUser(null);
     setIsAdmin(false);
-    showToast('Logged out successfully', 'info');
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
+      } catch {}
+    }
+    showToast('Signed out successfully', 'info');
   };
 
   const updateUserProfile = (updated: Partial<UserAccount>) => {
@@ -1708,6 +1850,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         currentUser,
         login,
+        loginWithGoogle,
         register,
         logout,
         adminLogin,
