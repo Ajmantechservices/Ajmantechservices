@@ -18,6 +18,7 @@ import {
   Youtube,
   CreditCard,
   Building,
+  Lock,
 } from 'lucide-react';
 import { ViewState } from '../types';
 
@@ -372,6 +373,15 @@ export const Footer: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span>© {new Date().getFullYear()} AjmanTech Services Nigeria Ltd. All Rights Reserved.</span>
             <span className="text-amber-300 font-medium hidden sm:inline">• “Let There Be Light”</span>
+            <button
+              id="footer-admin-lock-btn"
+              onClick={() => navigateTo('admin')}
+              className="opacity-20 hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-amber-400 cursor-pointer inline-flex items-center ml-0.5"
+              title="Admin Access"
+              aria-label="Admin Portal"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <div className="flex items-center gap-3 text-blue-200 text-[11px]">

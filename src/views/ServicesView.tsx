@@ -16,6 +16,8 @@ import {
   Award,
 } from 'lucide-react';
 
+import { ServicesList } from '../components/ServicesList';
+
 export const ServicesView: React.FC = () => {
   const { services, openServiceModal, openWhatsApp, navigateTo } = useStore();
 
@@ -63,8 +65,22 @@ export const ServicesView: React.FC = () => {
         </div>
       </section>
 
+      {/* Flagship Real Products & Solutions */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6">
+        <ServicesList
+          title="Core Engineering & Installation Solutions"
+          subtitle="Explore our 3 primary electrical engineering disciplines with transparent custom quote requests and instant WhatsApp consultation."
+        />
+      </section>
+
       {/* Services Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="mb-8">
+          <span className="text-xs font-bold uppercase tracking-widest text-[#0047AB]">Full Service Directory</span>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-[#002D72] mt-1">
+            Complete Installation & Maintenance Catalog
+          </h2>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {(services || []).map((srv) => (
             <div
