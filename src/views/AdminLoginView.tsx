@@ -59,7 +59,7 @@ export const AdminLoginView: React.FC = () => {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
   // Form Fields
-  const [fullName, setFullName] = useState<string>('Engr. Joshua Ajayi');
+  const [fullName, setFullName] = useState<string>('Engr. Abiodun Ajayi');
   const [email, setEmail] = useState<string>('support@digitalaccessplace.com');
   const [password, setPassword] = useState<string>('••••••••••••');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -163,7 +163,7 @@ export const AdminLoginView: React.FC = () => {
           await supabase.from('profiles').upsert({
             id: authenticatedUserId,
             email: TARGET_ADMIN_EMAIL,
-            full_name: 'Engr. Joshua Ajayi',
+            full_name: 'Engr. Abiodun Ajayi',
             role: 'admin',
           });
         } catch {}
@@ -178,7 +178,7 @@ export const AdminLoginView: React.FC = () => {
         // Fallback master bypass
         const masterRes = await adminLogin(TARGET_ADMIN_EMAIL, TARGET_ADMIN_PASSWORD);
         if (masterRes.success) {
-          showToast('Welcome back, Engr. Joshua Ajayi!', 'success');
+          showToast('Welcome back, Engr. Abiodun Ajayi!', 'success');
           navigateTo('admin-dashboard');
         } else {
           setErrorMessage(loginRes.message || 'Invalid credentials.');
@@ -298,7 +298,7 @@ export const AdminLoginView: React.FC = () => {
         body: JSON.stringify({
           email: TARGET_ADMIN_EMAIL,
           password: TARGET_ADMIN_PASSWORD,
-          fullName: 'Joshua Ajayi',
+          fullName: 'Abiodun Ajayi',
           serviceRoleKey: serviceRoleKeyInput.trim() || undefined,
         }),
       });
@@ -460,7 +460,7 @@ export const AdminLoginView: React.FC = () => {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Engr. Joshua Ajayi"
+                placeholder="e.g. Engr. Abiodun Ajayi"
                 className="w-full bg-[#EAF2FE] border border-blue-100/70 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#16a34a] focus:bg-white focus:border-transparent transition-all"
               />
             </div>

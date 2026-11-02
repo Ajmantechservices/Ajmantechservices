@@ -97,7 +97,7 @@ export const ServiceBookingModal: React.FC = () => {
   };
 
   const handleWhatsAppBooking = () => {
-    const msg = `Hello AjmanTech Services, I would like to request an installation/electrical service: ${selectedServiceObj?.name}. Location: ${city ? city + ', ' : ''}${state}. Date: ${preferredDate}. Details: ${description || 'Please call me to discuss.'}`;
+    const msg = `Hello Engr. Abiodun Ajayi / AjmanTech Services, I would like to negotiate the price for your electrical service: "${selectedServiceObj?.name}". Location: ${city ? city + ', ' : ''}${state}. Date: ${preferredDate}. Project details: ${description || 'Please let me know your rates and project availability.'}`;
     openWhatsApp(msg);
   };
 
@@ -142,8 +142,8 @@ export const ServiceBookingModal: React.FC = () => {
               <Wrench className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base sm:text-lg">Request Electrical Service / Installation</h3>
-              <p className="text-xs text-blue-200 font-light">Certified technicians deployed across Nigeria</p>
+              <h3 className="font-extrabold text-base sm:text-lg">Electrical Service & Price Negotiation</h3>
+              <p className="text-xs text-blue-200 font-light">Lead Engineer: Engr. Abiodun Ajayi (NEMSA Certified)</p>
             </div>
           </div>
           <button
@@ -151,6 +151,31 @@ export const ServiceBookingModal: React.FC = () => {
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
           >
             <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Direct WhatsApp Price Negotiation Banner */}
+        <div className="bg-emerald-50 border-b border-emerald-200 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <MessageCircle className="w-5 h-5 fill-white text-emerald-600" />
+            </div>
+            <div>
+              <div className="font-bold text-xs text-emerald-950 sm:text-sm">
+                Negotiate Price Directly on WhatsApp
+              </div>
+              <p className="text-[11px] text-emerald-800">
+                Services go directly to <strong>Engr. Abiodun Ajayi</strong> on WhatsApp for custom quotes and price negotiation.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleWhatsAppBooking}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#16a34a] hover:bg-[#15803d] text-white font-bold text-xs shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0"
+          >
+            <MessageCircle className="w-4 h-4 fill-white text-[#16a34a]" />
+            <span>Negotiate on WhatsApp</span>
           </button>
         </div>
 

@@ -448,23 +448,21 @@ export const HomeView: React.FC = () => {
               </div>
 
               <div className="p-5 pt-0 space-y-2">
-                <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 p-2 rounded-xl border border-emerald-100">
-                  {srv.pricingNote}
+                <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 p-2 rounded-xl border border-emerald-100 flex items-center justify-between">
+                  <span>Custom Quote</span>
+                  <span className="font-bold text-[#16a34a]">Negotiate on WhatsApp</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => openServiceModal(srv.name)}
-                    className="w-full py-2 px-2 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-[11px] font-bold text-center cursor-pointer transition-colors"
-                  >
-                    Request
-                  </button>
-                  <button
-                    onClick={() => openWhatsApp(`Hello AjmanTech Services, I want to book: ${srv.name}.`)}
-                    className="w-full py-2 px-2 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
-                  </button>
-                </div>
+                <button
+                  onClick={() =>
+                    openWhatsApp(
+                      `Hello Engr. Abiodun Ajayi / AjmanTech Services, I would like to negotiate the price for your service: "${srv.name}". Please let me know your pricing and project availability.`
+                    )
+                  }
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#16a34a] hover:bg-[#15803d] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 fill-white text-[#16a34a]" />
+                  <span>Negotiate on WhatsApp</span>
+                </button>
               </div>
             </div>
           ))}

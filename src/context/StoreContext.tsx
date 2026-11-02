@@ -345,7 +345,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           },
         ],
         customer: {
-          fullName: 'Engr. Joshua Ajayi',
+          fullName: 'Engr. Abiodun Ajayi',
           email: 'joshuaajayi0148@gmail.com',
           phone: '+234 802 345 6789',
           address: 'No. 24 Admiralty Way, Lekki Phase 1',
@@ -532,7 +532,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ticketNumber: 'SRV-5491',
         serviceId: 'srv-solar-installation',
         serviceName: 'Solar & Inverter System Installation',
-        customerName: 'Engr. Joshua Ajayi',
+        customerName: 'Engr. Abiodun Ajayi',
         email: 'joshuaajayi0148@gmail.com',
         phone: '+234 802 345 6789',
         state: 'Lagos',
@@ -1386,7 +1386,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setIsAdmin(true);
     const adminUser: UserAccount = {
       id: userId,
-      fullName: 'Engr. Joshua Ajayi',
+      fullName: 'Engr. Abiodun Ajayi',
       email: TARGET_ADMIN_EMAIL,
       phone: '+234 807 532 9182',
       role: 'admin',
@@ -1396,7 +1396,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCurrentUser(adminUser);
     saveStored(STORAGE_KEYS.IS_ADMIN, true);
     saveStored(STORAGE_KEYS.USER, adminUser);
-    showToast('Welcome back, Engr. Joshua Ajayi! Control Center loaded.', 'success');
+    showToast('Welcome back, Engr. Abiodun Ajayi! Control Center loaded.', 'success');
     return { success: true, message: 'Admin login successful' };
   };
 

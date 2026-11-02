@@ -15,8 +15,8 @@ export const realProducts: ServiceProductItem[] = [
   {
     id: '1',
     title: 'Solar Backup & Inverter Installation',
-    description: 'Reliable residential and commercial solar power systems engineered for zero downtime.',
-    price: 'Custom Quote',
+    description: 'Reliable residential and commercial solar power systems engineered for zero downtime by Engr. Abiodun Ajayi.',
+    price: 'Negotiate on WhatsApp',
     category: 'Power Systems',
     badge: 'Popular Renewable',
     iconName: 'Sun',
@@ -30,8 +30,8 @@ export const realProducts: ServiceProductItem[] = [
   {
     id: '2',
     title: 'Smart Home Automation',
-    description: 'Advanced lighting, security, and climate control integration tailored for modern homes.',
-    price: 'Custom Quote',
+    description: 'Advanced lighting, security, and climate control integration tailored for modern homes by Engr. Abiodun Ajayi.',
+    price: 'Negotiate on WhatsApp',
     category: 'Automation',
     badge: 'Smart Living',
     iconName: 'Cpu',
@@ -45,8 +45,8 @@ export const realProducts: ServiceProductItem[] = [
   {
     id: '3',
     title: 'Electrical Infrastructure & Wiring',
-    description: 'Professional commercial and residential electrical design, maintenance, and fault resolution.',
-    price: 'Custom Quote',
+    description: 'Professional commercial and residential electrical design, maintenance, and fault resolution by Engr. Abiodun Ajayi.',
+    price: 'Negotiate on WhatsApp',
     category: 'Electrical',
     badge: 'Certified Engineering',
     iconName: 'Zap',

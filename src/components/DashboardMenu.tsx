@@ -93,14 +93,10 @@ export default function DashboardMenu({
   }
 
   const handleBookOrInquire = (cat: DashboardCategory) => {
-    if (onBookService) {
-      onBookService(cat.title)
-    } else {
-      const text = encodeURIComponent(
-        `Hello AjmanTech Services, I would like to book / inquire about ${cat.title} (${cat.items.join(', ')}).`
-      )
-      window.open(`https://wa.me/2348075329182?text=${text}`, '_blank')
-    }
+    const text = encodeURIComponent(
+      `Hello Engr. Abiodun Ajayi / AjmanTech Services, I would like to negotiate the price for ${cat.title} (${cat.items.join(', ')}). Please let me know your pricing and project availability.`
+    )
+    window.open(`https://wa.me/2348075329182?text=${text}`, '_blank')
   }
 
   return (
@@ -251,9 +247,9 @@ export default function DashboardMenu({
                 {/* Request Button */}
                 <button 
                   onClick={() => handleBookOrInquire(cat)}
-                  className="mt-6 w-full py-2.5 px-4 bg-slate-700 hover:bg-cyan-500 hover:text-slate-950 text-white font-medium text-xs rounded-lg transition-all cursor-pointer active:scale-[0.98]"
+                  className="mt-6 w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]"
                 >
-                  Book or Inquire Service
+                  <span>💬 Negotiate Price on WhatsApp</span>
                 </button>
               </div>
             ))}

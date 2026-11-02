@@ -189,7 +189,7 @@ export async function signInAdminWithSupabase(
           .upsert({
             id: user.id,
             email: user.email,
-            full_name: user.user_metadata?.full_name || 'Joshua Ajayi',
+            full_name: user.user_metadata?.full_name || 'Abiodun Ajayi',
             role: 'admin',
           })
           .select('role')

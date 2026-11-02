@@ -29,7 +29,7 @@ export const ServicesView: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10 text-center max-w-3xl mx-auto space-y-4">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-white text-xs font-bold uppercase tracking-wider">
             <Wrench className="w-4 h-4 text-amber-300" />
-            Certified Electrical Engineering Services
+            Lead Engineer: Engr. Abiodun Ajayi (NEMSA & COREN Certified)
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
@@ -37,29 +37,27 @@ export const ServicesView: React.FC = () => {
           </h1>
 
           <p className="text-sm sm:text-base text-blue-100 font-light leading-relaxed">
-            From luxury high-ceiling chandelier rigging and conduit house wiring to hybrid solar power and CCTV surveillance. Handled safely by licensed electrical engineers.
+            From luxury high-ceiling chandelier rigging and conduit house wiring to hybrid solar power and CCTV surveillance. Handled safely by licensed electrical engineer <strong className="text-white font-semibold">Engr. Abiodun Ajayi</strong>. All services go directly to WhatsApp for custom quote & price negotiation.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 pt-3">
             <button
-              onClick={() => openServiceModal()}
-              className="px-7 py-3.5 rounded-full bg-white hover:bg-slate-100 text-[#002D72] font-bold text-xs shadow-lg transition-all cursor-pointer"
+              onClick={() =>
+                openWhatsApp(
+                  'Hello Engr. Abiodun Ajayi, I would like to negotiate the price for electrical installation services with you.'
+                )
+              }
+              className="px-8 py-3.5 rounded-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer"
             >
-              Book An Electrician Now
+              <MessageCircle className="w-4 h-4 fill-white text-[#16a34a]" />
+              <span>Negotiate Price on WhatsApp</span>
             </button>
             <button
               onClick={() => navigateTo('services-portal')}
-              className="px-7 py-3.5 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+              className="px-7 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer border border-white/20"
             >
               <span>⚡</span>
               <span>Services Portal Directory</span>
-            </button>
-            <button
-              onClick={() => openWhatsApp('Hello AjmanTech Services, I would like to inquire about your electrical and installation services.')}
-              className="px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
-              Discuss on WhatsApp
             </button>
           </div>
         </div>
@@ -126,29 +124,24 @@ export const ServicesView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Card Footer Actions */}
+              {/* Card Footer Actions - Direct to WhatsApp for Price Negotiation */}
               <div className="p-6 sm:p-8 pt-0 space-y-3">
-                <div className="text-xs font-semibold text-emerald-800 bg-emerald-50 p-3 rounded-2xl border border-emerald-200">
-                  💰 {srv.pricingNote}
+                <div className="text-xs font-semibold text-emerald-800 bg-emerald-50 p-3 rounded-2xl border border-emerald-200 flex items-center justify-between">
+                  <span>💰 Pricing: Custom Quote</span>
+                  <span className="font-bold text-[#16a34a]">Negotiate on WhatsApp</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => openServiceModal(srv.name)}
-                    className="py-3 px-4 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-xs font-bold shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Calendar className="w-4 h-4" />
-                    Book Inspection
-                  </button>
-
-                  <button
-                    onClick={() => openWhatsApp(`Hello AjmanTech Services, I need details on: ${srv.name}.`)}
-                    className="py-3 px-4 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <MessageCircle className="w-4 h-4 text-emerald-600" />
-                    Inquire on WhatsApp
-                  </button>
-                </div>
+                <button
+                  onClick={() =>
+                    openWhatsApp(
+                      `Hello Engr. Abiodun Ajayi / AjmanTech Services, I would like to negotiate the price for your service: "${srv.name}" (${srv.category}). Please let me know your rates and project availability.`
+                    )
+                  }
+                  className="w-full py-3.5 px-4 rounded-2xl bg-[#16a34a] hover:bg-[#15803d] active:bg-[#166534] text-white text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4 fill-white text-[#16a34a]" />
+                  <span>Negotiate Price on WhatsApp with Engr. Abiodun</span>
+                </button>
               </div>
             </div>
           ))}

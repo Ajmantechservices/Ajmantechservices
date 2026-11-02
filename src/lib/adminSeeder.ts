@@ -40,7 +40,7 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
 
   const email = (params.email || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
   const password = params.password || DEFAULT_ADMIN_PASSWORD;
-  const fullName = params.fullName || 'Joshua Ajayi';
+  const fullName = params.fullName || 'Abiodun Ajayi';
 
   if (!url || !url.startsWith('https://')) {
     return {

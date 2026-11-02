@@ -162,29 +162,23 @@ export const ServicesList: React.FC<ServicesListProps> = ({
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-6 mt-6 border-t border-slate-100 grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => openServiceModal(service.title)}
-                  className="w-full py-2.5 px-3 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-blue-900/10 transition-all cursor-pointer hover:translate-y-[-1px]"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Get Quote</span>
-                </button>
-
+              {/* Action Button: Direct to WhatsApp for Price Negotiation */}
+              <div className="pt-5 mt-5 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() =>
                     openWhatsApp(
-                      `Hello Engr. Joshua / AjmanTech Services, I would like to request a Custom Quote for: "${service.title}" (${service.category}). Please let me know the details and schedule.`
+                      `Hello Engr. Abiodun Ajayi / AjmanTech Services, I would like to negotiate the price for your service: "${service.title}" (${service.category}). Please let me know your pricing and project availability.`
                     )
                   }
-                  className="w-full py-2.5 px-3 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  className="w-full py-3 px-4 rounded-2xl bg-[#16a34a] hover:bg-[#15803d] active:bg-[#166534] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
-                  <span>WhatsApp</span>
+                  <MessageCircle className="w-4 h-4 fill-white text-[#16a34a]" />
+                  <span>Negotiate Price on WhatsApp</span>
                 </button>
+                <div className="text-center text-[10px] text-slate-400 mt-2 font-medium">
+                  Direct price negotiation with Engr. Abiodun Ajayi
+                </div>
               </div>
             </div>
           );
