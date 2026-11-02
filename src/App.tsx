@@ -78,11 +78,8 @@ const MainRouter: React.FC = () => {
     }
   };
 
-  const isAdminPortalView =
-    currentView === 'admin' ||
-    currentView === 'admin-login' ||
-    currentView === 'admin-signup' ||
-    currentView === 'admin-dashboard';
+  const isDedicatedAdminDashboard =
+    (currentView === 'admin' || currentView === 'admin-dashboard') && isAdmin;
 
   if (currentView === 'services-portal') {
     return (
@@ -105,8 +102,8 @@ const MainRouter: React.FC = () => {
         {renderView()}
       </main>
 
-      {/* Footer - hidden on dedicated admin views for clean, private workspace */}
-      {!isAdminPortalView && <Footer />}
+      {/* Footer - visible on storefront and login view, hidden only on active admin dashboard */}
+      {!isDedicatedAdminDashboard && <Footer />}
 
       {/* Overlays & Interactive Drawers/Modals */}
       <QuickViewModal />
