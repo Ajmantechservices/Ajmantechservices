@@ -259,6 +259,51 @@ export interface StoreSettings {
   };
 }
 
+export type ActivityActionType =
+  | 'auth'
+  | 'product'
+  | 'order'
+  | 'service'
+  | 'blog'
+  | 'settings'
+  | 'security';
+
+export interface ActivityLog {
+  id: string;
+  timestamp: string;
+  actionType: ActivityActionType;
+  title: string;
+  details: string;
+  adminName: string;
+  adminEmail: string;
+  ipAddress?: string;
+  userAgent?: string;
+  severity: 'info' | 'success' | 'warning' | 'alert';
+}
+
+export type NewActivityLog = Omit<ActivityLog, 'id' | 'timestamp' | 'adminName' | 'adminEmail'> & {
+  adminName?: string;
+  adminEmail?: string;
+};
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  category: string;
+  author: string;
+  authorRole?: string;
+  excerpt: string;
+  content: string;
+  coverImage: string;
+  status: 'published' | 'draft';
+  readTimeMinutes: number;
+  tags: string[];
+  createdAt: string;
+  updatedAt?: string;
+  views?: number;
+}
+
 export interface ProductGalleryItem {
   id: string;
   productId: string;

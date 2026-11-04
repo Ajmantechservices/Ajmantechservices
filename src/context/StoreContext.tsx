@@ -15,6 +15,9 @@ import {
   FAQItem,
   StoreSettings,
   ViewState,
+  ActivityLog,
+  NewActivityLog,
+  BlogPost,
 } from '../types';
 import {
   INITIAL_CATEGORIES,
@@ -24,6 +27,8 @@ import {
   INITIAL_REVIEWS,
   INITIAL_FAQS,
   INITIAL_STORE_SETTINGS,
+  INITIAL_ACTIVITY_LOGS,
+  INITIAL_BLOG_POSTS,
 } from '../data/initialData';
 import {
   supabase,
@@ -156,6 +161,17 @@ interface StoreContextType {
   addReview: (reviewData: Omit<Review, 'id' | 'date'>) => void;
   getProductReviews: (productId: string) => Review[];
 
+  // Activity Audit Logs
+  activityLogs: ActivityLog[];
+  addActivityLog: (log: NewActivityLog) => void;
+  clearActivityLogs: () => void;
+
+  // Blog & Posts
+  blogPosts: BlogPost[];
+  addBlogPost: (post: Omit<BlogPost, 'id' | 'createdAt' | 'updatedAt' | 'views'>) => BlogPost;
+  updateBlogPost: (post: BlogPost) => void;
+  deleteBlogPost: (id: string) => void;
+
   // Helpers & Notifications
   formatNaira: (amount: number) => string;
   toast: Toast | null;
@@ -179,6 +195,8 @@ const STORAGE_KEYS = {
   USER: 'ajmantech_user_v1',
   IS_ADMIN: 'ajmantech_is_admin_v1',
   REGISTERED_USERS: 'ajmantech_registered_customers_v1',
+  ACTIVITY_LOGS: 'ajmantech_activity_logs_v1',
+  BLOG_POSTS: 'ajmantech_blog_posts_v1',
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -551,7 +569,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return stored;
   });
 
+  // Activity Audit Logs State
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() =>
+    loadStored(STORAGE_KEYS.ACTIVITY_LOGS, INITIAL_ACTIVITY_LOGS)
+  );
+
+  // Blog Posts State
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() =>
+    loadStored(STORAGE_KEYS.BLOG_POSTS, INITIAL_BLOG_POSTS)
+  );
+
   // Sync back to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(activityLogs));
+    } catch (e) { console.error(e); }
+  }, [activityLogs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.BLOG_POSTS, JSON.stringify(blogPosts));
+    } catch (e) { console.error(e); }
+  }, [blogPosts]);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
@@ -840,6 +880,74 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Activity Audit Logs Handlers
+  const addActivityLog = (logData: NewActivityLog) => {
+    const newLog: ActivityLog = {
+      ...logData,
+      id: 'log-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      timestamp: new Date().toISOString(),
+      adminName: logData.adminName || (currentUser?.fullName || 'Engr. Abiodun Ajayi'),
+      adminEmail: logData.adminEmail || (currentUser?.email || TARGET_ADMIN_EMAIL),
+      ipAddress: logData.ipAddress || '102.89.47.12 (Lagos, NG)',
+      userAgent: logData.userAgent || (typeof window !== 'undefined' ? window.navigator.userAgent : 'Mozilla/5.0 (Admin Browser)'),
+    };
+    setActivityLogs((prev) => [newLog, ...prev]);
+  };
+
+  const clearActivityLogs = () => {
+    setActivityLogs([]);
+    showToast('Activity audit logs cleared.', 'info');
+  };
+
+  // Blog Posts Handlers
+  const addBlogPost = (postData: Omit<BlogPost, 'id' | 'createdAt' | 'updatedAt' | 'views'>): BlogPost => {
+    const newPost: BlogPost = {
+      ...postData,
+      id: 'post-' + Date.now(),
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+      views: 0,
+    };
+    setBlogPosts((prev) => [newPost, ...prev]);
+    addActivityLog({
+      actionType: 'blog',
+      title: `Article Created: ${newPost.title}`,
+      details: `New article created in category "${newPost.category}" (Status: ${newPost.status.toUpperCase()})`,
+      severity: 'info',
+    });
+    showToast(`Article "${newPost.title}" created successfully!`, 'success');
+    return newPost;
+  };
+
+  const updateBlogPost = (updatedPost: BlogPost) => {
+    setBlogPosts((prev) =>
+      prev.map((post) =>
+        post.id === updatedPost.id
+          ? { ...updatedPost, updatedAt: new Date().toISOString().split('T')[0] }
+          : post
+      )
+    );
+    addActivityLog({
+      actionType: 'blog',
+      title: `Article Updated: ${updatedPost.title}`,
+      details: `Status: ${updatedPost.status.toUpperCase()} • Category: ${updatedPost.category}`,
+      severity: 'info',
+    });
+    showToast(`Article "${updatedPost.title}" updated!`, 'success');
+  };
+
+  const deleteBlogPost = (id: string) => {
+    const postToDelete = blogPosts.find((p) => p.id === id);
+    setBlogPosts((prev) => prev.filter((p) => p.id !== id));
+    addActivityLog({
+      actionType: 'blog',
+      title: 'Article Deleted',
+      details: `Article "${postToDelete?.title || id}" was permanently removed`,
+      severity: 'warning',
+    });
+    showToast('Article deleted.', 'info');
+  };
+
   // Cart operations
   const addToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
     setCart((prev) => {
@@ -1122,6 +1230,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return order;
       })
     );
+    addActivityLog({
+      actionType: 'order',
+      title: `Payment ${paymentStatus.toUpperCase()}: Order #${orderId}`,
+      details: `Payment status verified for order. Channel: ${paymentChannel || 'Bank Transfer'}. Ref: ${paymentReference || 'N/A'}`,
+      severity: paymentStatus === 'verified' || paymentStatus === 'paid' ? 'success' : 'info',
+    });
     showToast(`Order payment status updated to "${paymentStatus.toUpperCase()}"!`, 'success');
   };
 
@@ -1154,6 +1268,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return order;
       })
     );
+    addActivityLog({
+      actionType: 'order',
+      title: `Order Status Changed: ${status.replace(/_/g, ' ').toUpperCase()}`,
+      details: `Order #${orderId} updated to ${status}. Note: ${note || 'Status updated by administrator'}`,
+      severity: status === 'delivered' ? 'success' : 'info',
+    });
     showToast(`Order status updated to "${status.replace(/_/g, ' ').toUpperCase()}"`);
 
     // Async Supabase Sync
@@ -1364,6 +1484,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (!isAllowedAdmin) {
       setIsAdmin(false);
+      addActivityLog({
+        actionType: 'security',
+        title: 'Unauthorized Admin Login Attempt Blocked',
+        details: `Rejected access attempt with unauthorized email: ${email}`,
+        adminName: 'Restricted Visitor',
+        adminEmail: email,
+        severity: 'alert',
+      });
       return {
         success: false,
         message: 'Unauthorized access: Only the site owner can log into this dashboard.',
@@ -1396,6 +1524,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCurrentUser(adminUser);
     saveStored(STORAGE_KEYS.IS_ADMIN, true);
     saveStored(STORAGE_KEYS.USER, adminUser);
+    addActivityLog({
+      actionType: 'auth',
+      title: 'Admin Login Successful',
+      details: 'Engr. Abiodun Ajayi signed into Control Center with master administrative credentials.',
+      adminName: 'Engr. Abiodun Ajayi',
+      adminEmail: TARGET_ADMIN_EMAIL,
+      severity: 'success',
+    });
     showToast('Welcome back, Engr. Abiodun Ajayi! Control Center loaded.', 'success');
     return { success: true, message: 'Admin login successful' };
   };
@@ -1408,6 +1544,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const adminLogout = async () => {
+    addActivityLog({
+      actionType: 'auth',
+      title: 'Admin Session Closed',
+      details: 'Engr. Abiodun Ajayi safely signed out from Control Center.',
+      adminName: 'Engr. Abiodun Ajayi',
+      adminEmail: TARGET_ADMIN_EMAIL,
+      severity: 'info',
+    });
     await signOutAdminWithSupabase();
     setIsAdmin(false);
     setCurrentUser(null);
@@ -1541,6 +1685,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
+    addActivityLog({
+      actionType: 'product',
+      title: `Product Added: ${newProduct.name}`,
+      details: `New catalog item added. SKU: ${newProduct.specifications?.sku || 'N/A'}. Price: ₦${newProduct.price.toLocaleString()} (Stock: ${newProduct.stock})`,
+      severity: 'info',
+    });
     showToast(`Product "${newProduct.name}" added successfully!`);
     return newProduct;
   };
@@ -1573,10 +1723,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
+    addActivityLog({
+      actionType: 'product',
+      title: `Product Modified: ${updated.name}`,
+      details: `Updated catalog item. Price: ₦${updated.price.toLocaleString()} • Stock: ${updated.stock} units • Category: ${updated.category}`,
+      severity: 'info',
+    });
     showToast(`Product "${updated.name}" updated!`);
   };
 
   const deleteProduct = async (id: string) => {
+    const item = products.find((p) => p.id === id);
     setProducts((prev) => prev.filter((p) => p.id !== id));
 
     if (isSupabaseConfigured() && supabase) {
@@ -1588,6 +1745,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
+    addActivityLog({
+      actionType: 'product',
+      title: `Product Deleted: ${item?.name || id}`,
+      details: `Product removed from inventory catalog and live storefront.`,
+      severity: 'warning',
+    });
     showToast('Product deleted from inventory.', 'info');
   };
 
@@ -1604,6 +1767,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
+    addActivityLog({
+      actionType: 'product',
+      title: `Bulk Deletion: ${ids.length} Products Removed`,
+      details: `Administrator bulk deleted ${ids.length} items from database catalog.`,
+      severity: 'warning',
+    });
     showToast(`Deleted ${ids.length} product(s) from inventory.`, 'info');
   };
 
@@ -1887,6 +2056,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const updateStoreSettings = (newSettings: StoreSettings) => {
     setStoreSettings(newSettings);
+    addActivityLog({
+      actionType: 'settings',
+      title: 'Store Settings Saved',
+      details: `Updated system settings, WhatsApp helpline (${newSettings.whatsappNumber}), delivery fees, and bank details.`,
+      severity: 'info',
+    });
     showToast('Store settings updated successfully!');
   };
 
@@ -1974,6 +2149,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         deleteProductGalleryItem,
         deleteMultipleProductGalleryItems,
         refreshCatalog,
+
+        // Activity Audit Logs
+        activityLogs,
+        addActivityLog,
+        clearActivityLogs,
+
+        // Blog & Posts
+        blogPosts,
+        addBlogPost,
+        updateBlogPost,
+        deleteBlogPost,
 
         addReview,
         getProductReviews,
