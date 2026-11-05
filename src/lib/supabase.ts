@@ -509,3 +509,40 @@ export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCount
   }
 }
 
+export interface SupabaseOrderRecord {
+  id: string;
+  order_number?: string;
+  reference?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  total_amount?: number;
+  amount?: number;
+  delivery_fee?: number;
+  installation_fee?: number;
+  status?: string;
+  payment_method?: string;
+  payment_status?: string;
+  service_name?: string;
+  items?: any;
+  created_at?: string;
+  createdAt?: string;
+}
+
+/**
+ * Fetch all orders directly from Supabase public.orders table for analytics
+ */
+export async function fetchSupabaseOrders(): Promise<{ data: SupabaseOrderRecord[] | null; error: any }> {
+  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  try {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: true });
+    return { data: (data as SupabaseOrderRecord[]) || null, error };
+  } catch (err) {
+    console.warn('Error fetching Supabase orders:', err);
+    return { data: null, error: err };
+  }
+}
+
