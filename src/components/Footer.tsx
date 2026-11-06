@@ -384,18 +384,6 @@ export const Footer: React.FC = () => {
             </button>
           </div>
 
-          {/* Floating or corner Admin circular badge matching screenshot */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigateTo('admin')}
-              className="w-10 h-10 rounded-full bg-white/95 border border-slate-200 shadow-sm hover:shadow-md text-slate-500 hover:text-slate-900 text-xs font-medium flex items-center justify-center transition-all cursor-pointer opacity-80 hover:opacity-100"
-              title="Admin Portal"
-              aria-label="Admin Portal"
-            >
-              Admin
-            </button>
-          </div>
-
           <div className="flex items-center gap-3 text-blue-200 text-[11px]">
             <span className="flex items-center gap-1">
               <Building className="w-3.5 h-3.5 text-blue-300" />
