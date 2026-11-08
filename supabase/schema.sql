@@ -155,6 +155,18 @@ create table if not exists public.reviews (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- 7b. PRODUCT REVIEWS TABLE (Dedicated product reviews table)
+create table if not exists public.product_reviews (
+  id text primary key,
+  product_id text not null,
+  author_name text not null,
+  rating integer not null check (rating >= 1 and rating <= 5),
+  comment text not null,
+  verified_purchase boolean default true,
+  helpful_count integer default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 -- 8. STORE SETTINGS TABLE
 create table if not exists public.store_settings (
   id text primary key default 'primary_settings',
@@ -192,6 +204,7 @@ alter table public.product_gallery enable row level security;
 alter table public.orders enable row level security;
 alter table public.service_requests enable row level security;
 alter table public.reviews enable row level security;
+alter table public.product_reviews enable row level security;
 alter table public.store_settings enable row level security;
 alter table public.posts enable row level security;
 
@@ -205,6 +218,7 @@ create policy "Allow public read on categories" on public.categories for select 
 create policy "Allow public read on products" on public.products for select using (true);
 create policy "Allow public read on product_gallery" on public.product_gallery for select using (true);
 create policy "Allow public read on reviews" on public.reviews for select using (true);
+create policy "Allow public read on product_reviews" on public.product_reviews for select using (true);
 create policy "Allow public read on store_settings" on public.store_settings for select using (true);
 create policy "Allow public read on posts" on public.posts for select using (true);
 
@@ -214,6 +228,7 @@ create policy "Allow public select on orders" on public.orders for select using 
 create policy "Allow public insert on service_requests" on public.service_requests for insert with check (true);
 create policy "Allow public select on service_requests" on public.service_requests for select using (true);
 create policy "Allow public insert on reviews" on public.reviews for insert with check (true);
+create policy "Allow public insert on product_reviews" on public.product_reviews for insert with check (true);
 
 -- Allow all modifications for authenticated or full anon key during development
 create policy "Allow all modifications on categories" on public.categories for all using (true) with check (true);
@@ -221,6 +236,8 @@ create policy "Allow all modifications on products" on public.products for all u
 create policy "Allow all modifications on product_gallery" on public.product_gallery for all using (true) with check (true);
 create policy "Allow all modifications on orders" on public.orders for all using (true) with check (true);
 create policy "Allow all modifications on service_requests" on public.service_requests for all using (true) with check (true);
+create policy "Allow all modifications on reviews" on public.reviews for all using (true) with check (true);
+create policy "Allow all modifications on product_reviews" on public.product_reviews for all using (true) with check (true);
 create policy "Allow all modifications on store_settings" on public.store_settings for all using (true) with check (true);
 create policy "Allow all modifications on posts" on public.posts for all using (true) with check (true);
 
