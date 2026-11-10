@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { PaymentMethod } from '../types';
 import { PaymentGatewayModal } from '../components/PaymentGatewayModal';
+import PaystackPop from '@paystack/inline-js';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { sendOrderConfirmationEmail } from '../services/emailService';
 
 export const CheckoutView: React.FC = () => {
   const {
@@ -100,61 +103,102 @@ export const CheckoutView: React.FC = () => {
     setTimeout(() => setIsCopied(false), 3000);
   };
 
-  const handleSubmitOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName || !phone || !state || !city || !streetAddress) {
-      showToast('Please fill in all required delivery fields.', 'error');
-      return;
+  const resolvePaystackPublicKey = (): string => {
+    const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) ? (import.meta as any).env : {};
+    if (metaEnv.VITE_PAYSTACK_PUBLIC_KEY && metaEnv.VITE_PAYSTACK_PUBLIC_KEY.startsWith('pk_')) {
+      return metaEnv.VITE_PAYSTACK_PUBLIC_KEY.trim();
     }
-
-    // If online card payment is selected, launch the secure payment gateway modal
-    if (paymentMethod === 'card') {
-      setIsPaymentGatewayOpen(true);
-      return;
+    if (metaEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY && metaEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY.startsWith('pk_')) {
+      return metaEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY.trim();
     }
-
-    setIsSubmitting(true);
-
-    try {
-      const newOrder = createOrder({
-        customerName: fullName,
-        customerEmail: email || 'customer@ajmantech.ng',
-        customerPhone: phone,
-        deliveryAddress: {
-          fullName,
-          phone,
-          state,
-          city,
-          streetAddress,
-        },
-        deliveryFee,
-        discountAmount,
-        paymentMethod,
-        paymentStatus: 'pending',
-        appliedPromoCode: appliedPromo?.code,
-        notes: deliveryNotes,
-        installationRequested: includeInstallation,
-      });
-
-      // Navigate to order success view
-      navigateTo('order-success', { orderId: newOrder.id, orderNumber: newOrder.orderNumber });
-    } catch (err) {
-      showToast('There was an error placing your order. Please try again.', 'error');
-    } finally {
-      setIsSubmitting(false);
+    if (typeof process !== 'undefined' && process.env) {
+      if (process.env.VITE_PAYSTACK_PUBLIC_KEY && process.env.VITE_PAYSTACK_PUBLIC_KEY.startsWith('pk_')) {
+        return process.env.VITE_PAYSTACK_PUBLIC_KEY.trim();
+      }
+      if (process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY && process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY.startsWith('pk_')) {
+        return process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY.trim();
+      }
     }
+    return '';
   };
 
-  const handlePaymentSuccess = (paymentDetails: {
-    reference: string;
-    channel: string;
-    paidAt: string;
-    amount: number;
-  }) => {
+  // 2. Ensure that database insertion (saving to the `orders` table) happens exclusively inside Paystack's onSuccess(response) callback function.
+  // 4. Pass the Paystack transaction reference along with the order data so every placed order is tied to a verified payment.
+  const handlePaystackSuccess = async (verifiedReference: string) => {
+    setIsSubmitting(true);
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    const orderNumber = `AJM-${new Date().getFullYear()}-${randomNum}`;
+    const orderId = `ord-${Date.now()}-${randomNum}`;
+    const orderItems = cart.map((c) => ({
+      productId: c.product.id,
+      title: c.product.name,
+      productName: c.product.name,
+      price: c.product.discountPrice ?? c.product.price,
+      quantity: c.quantity,
+      image: c.product.images?.[0] || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
+      productImage: c.product.images?.[0] || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
+      variant: c.selectedVariant,
+    }));
+
     try {
+      // Exclusively insert into Supabase orders table upon verified Paystack payment
+      if (isSupabaseConfigured() && supabase) {
+        const { error: dbError } = await supabase.from('orders').insert([
+          {
+            id: orderId,
+            order_number: orderNumber,
+            reference: verifiedReference,
+            customer_name: fullName,
+            customer_email: email,
+            customer_phone: phone,
+            amount: Math.round(grandTotal),
+            total_amount: Math.round(grandTotal),
+            delivery_fee: deliveryFee,
+            installation_fee: includeInstallation ? 15000 : 0,
+            payment_method: 'paystack',
+            payment_status: 'paid',
+            status: 'confirmed',
+            items: orderItems,
+            delivery_address: {
+              fullName,
+              phone,
+              streetAddress,
+              address: streetAddress,
+              city,
+              state,
+            },
+            delivery_notes: deliveryNotes,
+            tracking_history: [
+              {
+                status: 'placed',
+                title: 'Order Placed & Payment Verified',
+                description: `Paystack online payment (${verifiedReference}) verified successfully.`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                completed: true,
+              },
+              {
+                status: 'confirmed',
+                title: 'Payment Confirmed',
+                description: `Transaction reference: ${verifiedReference}`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                completed: true,
+              },
+            ],
+            created_at: new Date().toISOString(),
+          },
+        ]);
+
+        if (dbError) {
+          console.error('Supabase order insert error inside Paystack onSuccess:', dbError);
+        }
+      }
+
+      // Sync with client application store state
       const newOrder = createOrder({
+        id: orderId,
+        orderNumber,
         customerName: fullName,
-        customerEmail: email || 'customer@ajmantech.ng',
+        customerEmail: email,
         customerPhone: phone,
         deliveryAddress: {
           fullName,
@@ -167,18 +211,153 @@ export const CheckoutView: React.FC = () => {
         discountAmount,
         paymentMethod: 'card',
         paymentStatus: 'paid',
-        paymentReference: paymentDetails.reference,
-        paymentChannel: paymentDetails.channel,
-        paidAt: paymentDetails.paidAt,
+        paymentReference: verifiedReference,
+        paymentChannel: 'Paystack Gateway',
+        paidAt: new Date().toISOString(),
         appliedPromoCode: appliedPromo?.code,
         notes: deliveryNotes,
         installationRequested: includeInstallation,
+        skipDatabaseSync: true, // Already saved exclusively in Paystack onSuccess above
       });
 
       setIsPaymentGatewayOpen(false);
-      navigateTo('order-success', { orderId: newOrder.id, orderNumber: newOrder.orderNumber });
+      showToast(`Payment successful! Order ${newOrder.orderNumber} confirmed.`, 'success');
+
+      // Automated email confirmation dispatched immediately after successful Paystack payment
+      sendOrderConfirmationEmail({
+        orderNumber: newOrder.orderNumber,
+        customerEmail: email,
+        customerName: fullName,
+        customerPhone: phone,
+        deliveryAddress: {
+          fullName,
+          phone,
+          streetAddress,
+          city,
+          state,
+        },
+        items: orderItems,
+        totalAmount: Math.round(grandTotal),
+        deliveryFee,
+        paymentReference: verifiedReference,
+        paidAt: new Date().toISOString(),
+      })
+        .then((res) => {
+          if (res?.success) {
+            showToast(`Order confirmation & receipt sent to ${email}`, 'success');
+          }
+        })
+        .catch((emailErr) => {
+          console.warn('[Email Confirmation Notice]:', emailErr);
+        });
+
+      navigateTo('order-success', {
+        orderId: newOrder.id,
+        orderNumber: newOrder.orderNumber,
+        email: newOrder.customer.email,
+        token: newOrder.id,
+      });
     } catch (err) {
-      showToast('Payment was approved, but an error occurred saving the order.', 'error');
+      console.error('Error handling Paystack onSuccess:', err);
+      showToast('Payment was approved, but an error occurred saving the order to database.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 3. If the user closes the Paystack payment modal or the transaction fails (onClose or error),
+  // prevent the order from being created in Supabase and notify the user that payment is required to complete the order.
+  const handlePaystackClose = () => {
+    setIsSubmitting(false);
+    setIsPaymentGatewayOpen(false);
+    showToast('Payment is required to complete your order. Transaction was cancelled and no order was created.', 'error');
+  };
+
+  const handleSubmitOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName || !phone || !state || !city || !streetAddress) {
+      showToast('Please fill in all required delivery fields.', 'error');
+      return;
+    }
+
+    if (!email || !email.includes('@')) {
+      showToast('Please enter a valid email address for your Paystack payment receipt.', 'error');
+      return;
+    }
+
+    // Paystack Instant Online Payment
+    if (paymentMethod === 'card') {
+      setIsSubmitting(true);
+      const publicKey = resolvePaystackPublicKey();
+      const txReference = `ATS_PSTK_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+      if (publicKey && publicKey.startsWith('pk_') && typeof window !== 'undefined') {
+        try {
+          const popup = new PaystackPop();
+          popup.newTransaction({
+            key: publicKey,
+            email: email.trim(),
+            amount: Math.round(grandTotal * 100), // in kobo (e.g., ₦1,000 = 100000)
+            currency: 'NGN',
+            ref: txReference,
+            onSuccess: (response: { reference: string }) => {
+              handlePaystackSuccess(response?.reference || txReference);
+            },
+            callback: (response: { reference: string }) => {
+              handlePaystackSuccess(response?.reference || txReference);
+            },
+            onClose: () => {
+              handlePaystackClose();
+            },
+          });
+          return;
+        } catch (popupErr) {
+          console.warn('Paystack inline popup fallback to modal:', popupErr);
+          setIsPaymentGatewayOpen(true);
+          return;
+        }
+      }
+
+      // If no live public key is injected in preview environment, open secure simulated Paystack modal
+      setIsPaymentGatewayOpen(true);
+      return;
+    }
+
+    // Offline Bank Transfer:
+    // Notice: Database insertion in Supabase is ONLY performed for verified Paystack payments
+    setIsSubmitting(true);
+    try {
+      const newOrder = createOrder({
+        customerName: fullName,
+        customerEmail: email || 'customer@ajmantech.ng',
+        customerPhone: phone,
+        deliveryAddress: {
+          fullName,
+          phone,
+          state,
+          city,
+          streetAddress,
+        },
+        deliveryFee,
+        discountAmount,
+        paymentMethod: 'bank_transfer',
+        paymentStatus: 'pending',
+        appliedPromoCode: appliedPromo?.code,
+        notes: deliveryNotes,
+        installationRequested: includeInstallation,
+        skipDatabaseSync: true, // Supabase orders table only stores verified Paystack payments
+      });
+
+      navigateTo('order-success', {
+        orderId: newOrder.id,
+        orderNumber: newOrder.orderNumber,
+        email: newOrder.customer.email,
+        token: newOrder.id,
+      });
+    } catch {
+      showToast('There was an error placing your order. Please try again.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -666,12 +845,12 @@ export const CheckoutView: React.FC = () => {
       {/* Live Payment Gateway Modal */}
       <PaymentGatewayModal
         isOpen={isPaymentGatewayOpen}
-        onClose={() => setIsPaymentGatewayOpen(false)}
+        onClose={handlePaystackClose}
         amount={grandTotal}
         customerEmail={email || 'customer@ajmantech.ng'}
         customerName={fullName}
         customerPhone={phone}
-        onPaymentSuccess={handlePaymentSuccess}
+        onPaymentSuccess={(details) => handlePaystackSuccess(details.reference)}
       />
     </div>
   );

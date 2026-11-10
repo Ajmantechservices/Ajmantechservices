@@ -54,6 +54,9 @@ export interface NavigationState {
   serviceId?: string | null;
   categorySlug?: string | null;
   orderId?: string | null;
+  orderNumber?: string | null;
+  email?: string | null;
+  token?: string | null;
 }
 
 interface StoreContextType {
@@ -69,7 +72,19 @@ interface StoreContextType {
   navigationState: NavigationState;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  navigateTo: (view: ViewState, params?: { productId?: string; serviceId?: string; slug?: string; categorySlug?: string; orderId?: string }) => void;
+  navigateTo: (
+    view: ViewState,
+    params?: {
+      productId?: string;
+      serviceId?: string;
+      slug?: string;
+      categorySlug?: string;
+      orderId?: string;
+      orderNumber?: string;
+      email?: string;
+      token?: string;
+    }
+  ) => void;
 
   // Modals & Drawers
   quickViewProduct: Product | null;
@@ -211,6 +226,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (path === '/services') return 'services';
       if (path === '/account') return 'account';
       if (path === '/wishlist') return 'wishlist';
+      if (path === '/track' || path === '/track/' || path === '/track-order' || path.startsWith('/track')) return 'track-order';
     }
     return 'home';
   };
@@ -220,6 +236,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [trackingNavigationParams, setTrackingNavigationParams] = useState<{
+    orderNumber?: string | null;
+    email?: string | null;
+    token?: string | null;
+  }>({});
 
   // Modals
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -269,16 +290,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [faqs] = useState<FAQItem[]>(INITIAL_FAQS);
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
     const loaded = loadStored<StoreSettings>(STORAGE_KEYS.SETTINGS, INITIAL_STORE_SETTINGS);
-    // Automatically update to official contacts if using old placeholder number or links
+    // Automatically update to official contacts and new address if using old placeholder number or old address
     if (
       loaded.whatsappNumber === '+2348023456789' ||
-      !loaded.socialLinks?.facebook?.includes('61552688677268')
+      !loaded.socialLinks?.facebook?.includes('61552688677268') ||
+      !loaded.address ||
+      loaded.address.includes('Commercial Avenue') ||
+      loaded.address.includes('Ikeja Electrical Market') ||
+      !loaded.address.toLowerCase().includes('ikota')
     ) {
       const merged: StoreSettings = {
         ...loaded,
+        address: INITIAL_STORE_SETTINGS.address,
         whatsappNumber: INITIAL_STORE_SETTINGS.whatsappNumber,
         phone: INITIAL_STORE_SETTINGS.phone,
         altPhone: INITIAL_STORE_SETTINGS.altPhone,
+        deliveryRates: {
+          ...loaded.deliveryRates,
+          'Store Pickup (Ikota Villa Estate Showroom)': 0,
+        },
+        bankDetails: {
+          ...loaded.bankDetails,
+          branch: INITIAL_STORE_SETTINGS.bankDetails.branch,
+        },
         socialLinks: {
           ...loaded.socialLinks,
           facebook: INITIAL_STORE_SETTINGS.socialLinks.facebook,
@@ -805,6 +839,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       else if (path === '/services') setCurrentView('services');
       else if (path === '/account') setCurrentView('account');
       else if (path === '/wishlist') setCurrentView('wishlist');
+      else if (path === '/track' || path === '/track/' || path === '/track-order' || path.startsWith('/track')) setCurrentView('track-order');
       else if (path === '/') setCurrentView('home');
     };
     window.addEventListener('popstate', handlePopState);
@@ -814,11 +849,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Scroll to top on view change & sync URL
   const navigateTo = (
     view: ViewState,
-    params?: { productId?: string; serviceId?: string; slug?: string; categorySlug?: string; orderId?: string }
+    params?: {
+      productId?: string;
+      serviceId?: string;
+      slug?: string;
+      categorySlug?: string;
+      orderId?: string;
+      orderNumber?: string;
+      email?: string;
+      token?: string;
+    }
   ) => {
     if (params?.productId !== undefined) setSelectedProductId(params.productId || null);
     if (params?.serviceId !== undefined) setSelectedServiceId(params.serviceId || null);
     if (params?.categorySlug !== undefined) setSelectedCategorySlug(params.categorySlug || null);
+    if (params?.orderNumber !== undefined || params?.email !== undefined || params?.token !== undefined) {
+      setTrackingNavigationParams({
+        orderNumber: params?.orderNumber || null,
+        email: params?.email || null,
+        token: params?.token || null,
+      });
+    }
     if (params?.orderId) {
       const found = orders.find((o) => o.id === params.orderId || o.orderNumber === params.orderId);
       if (found) setActiveOrderForSuccess(found);
@@ -838,6 +889,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       else if (view === 'portfolio') targetPath = '/portfolio';
       else if (view === 'about') targetPath = '/about';
       else if (view === 'contact') targetPath = '/contact';
+      else if (view === 'track-order') targetPath = '/track';
 
       try {
         if (window.location.pathname !== targetPath) {
@@ -857,8 +909,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       serviceId: selectedServiceId,
       categorySlug: selectedCategorySlug,
       orderId: activeOrderForSuccess?.id || null,
+      orderNumber: trackingNavigationParams.orderNumber || null,
+      email: trackingNavigationParams.email || null,
+      token: trackingNavigationParams.token || null,
     }),
-    [selectedProductId, selectedServiceId, selectedCategorySlug, activeOrderForSuccess]
+    [selectedProductId, selectedServiceId, selectedCategorySlug, activeOrderForSuccess, trackingNavigationParams]
   );
 
   const openServiceModal = (defaultServiceType?: string) => {
@@ -1163,21 +1218,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setActiveOrderForSuccess(newOrder);
     showToast(`Order ${orderNumber} placed successfully!`, 'success');
 
-    // Async Supabase Sync
-    if (isSupabaseConfigured() && supabase) {
+    // Database insertion to Supabase happens EXCLUSIVELY for verified paid Paystack transactions
+    if (
+      isSupabaseConfigured() &&
+      supabase &&
+      newOrder.paymentStatus === 'paid' &&
+      newOrder.paymentReference &&
+      !orderData.skipDatabaseSync
+    ) {
       supabase
         .from('orders')
         .insert({
           id: newOrder.id,
           order_number: newOrder.orderNumber,
+          reference: newOrder.paymentReference,
           customer_name: newOrder.customer.fullName,
           customer_email: newOrder.customer.email,
           customer_phone: newOrder.customer.phone,
           items: newOrder.items,
           total_amount: newOrder.total,
+          amount: newOrder.total,
           delivery_fee: newOrder.deliveryFee,
-          payment_method: newOrder.paymentMethod,
-          payment_status: newOrder.paymentStatus,
+          payment_method: 'paystack',
+          payment_status: 'paid',
           delivery_address: {
             address: newOrder.customer.address,
             state: newOrder.customer.state,

@@ -31,7 +31,7 @@ export const OfficialReceiptModal: React.FC<OfficialReceiptModalProps> = ({
   onClose,
   order,
 }) => {
-  const { formatNaira, openWhatsApp, showToast } = useStore();
+  const { formatNaira, openWhatsApp, showToast, storeSettings } = useStore();
   const receiptRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !order) return null;
@@ -69,7 +69,7 @@ export const OfficialReceiptModal: React.FC<OfficialReceiptModalProps> = ({
   };
 
   const handleCopyLink = () => {
-    const url = `${window.location.origin}/track-order?ref=${order.orderNumber}`;
+    const url = `${window.location.origin}/track?ref=${encodeURIComponent(order.orderNumber)}&token=${encodeURIComponent(order.id)}`;
     navigator.clipboard?.writeText(url);
     showToast('Receipt verification link copied to clipboard!');
   };
@@ -141,7 +141,7 @@ export const OfficialReceiptModal: React.FC<OfficialReceiptModalProps> = ({
                 <p className="font-semibold text-slate-700">AjmanTech Electrical & Solar Solutions Nigeria Ltd</p>
                 <p>RC Number: <strong>RC 1849204</strong> • TIN: <strong>24901824-0001</strong></p>
                 <p>NEMSA & COREN Certified Electrical Contractor</p>
-                <p>Plot 14, Commercial Avenue, Ikeja, Lagos • 24 Admiralty Way, Lekki Phase 1</p>
+                <p>{storeSettings.address}</p>
                 <p>Hotline: +234 807 532 9182 | +234 802 345 6789 • Email: billing@ajmantech.ng</p>
               </div>
             </div>
@@ -363,7 +363,7 @@ export const OfficialReceiptModal: React.FC<OfficialReceiptModalProps> = ({
         {/* Modal Bottom Bar (Hidden in Print) */}
         <div className="bg-slate-50 border-t border-slate-200 p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 print:hidden">
           <div className="text-xs text-slate-500 font-light">
-            Need physical copy delivered? Show this receipt at our Ikeja / Lekki showroom.
+            Need physical copy delivered? Show this receipt at our Ikota Villa Estate showroom.
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button

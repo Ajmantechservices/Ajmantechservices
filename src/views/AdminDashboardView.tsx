@@ -502,6 +502,7 @@ export const AdminDashboardView: React.FC = () => {
   const [settingsAccountName, setSettingsAccountName] = useState(storeSettings.bankDetails.accountName);
   const [settingsAccountNumber, setSettingsAccountNumber] = useState(storeSettings.bankDetails.accountNumber);
   const [settingsWhatsapp, setSettingsWhatsapp] = useState(storeSettings.whatsappNumber);
+  const [settingsAddress, setSettingsAddress] = useState(storeSettings.address);
   const [settingsFacebook, setSettingsFacebook] = useState(storeSettings.socialLinks.facebook);
   const [settingsInstagram, setSettingsInstagram] = useState(storeSettings.socialLinks.instagram);
   const [settingsFreeThreshold, setSettingsFreeThreshold] = useState(storeSettings.freeDeliveryThreshold);
@@ -2520,11 +2521,25 @@ export const AdminDashboardView: React.FC = () => {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Store / Showroom Address
+                </label>
+                <input
+                  type="text"
+                  value={settingsAddress}
+                  onChange={(e) => setSettingsAddress(e.target.value)}
+                  placeholder="e.g. Folabi Oyeyemi, Royalty Road, Ikota Villa Estate, Lekki, Lagos, Nigeria"
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900"
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
                   updateStoreSettings({
                     ...storeSettings,
+                    address: settingsAddress,
                     bankDetails: {
                       ...storeSettings.bankDetails,
                       bankName: settingsBankName,

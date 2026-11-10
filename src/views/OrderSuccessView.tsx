@@ -288,7 +288,13 @@ export const OrderSuccessView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => navigateTo('track-order', { orderNumber: order.orderNumber })}
+          onClick={() =>
+            navigateTo('track-order', {
+              orderNumber: order.orderNumber,
+              email: order.customer?.email || order.customerEmail,
+              token: order.id,
+            })
+          }
           className="w-full sm:w-auto py-3 px-5 rounded-full bg-slate-100 hover:bg-slate-200 text-[#002D72] font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
         >
           <Package className="w-4 h-4" />

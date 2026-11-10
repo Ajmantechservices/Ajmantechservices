@@ -470,7 +470,13 @@ export const CustomerAccountView: React.FC = () => {
                           Shipped to: {ord.deliveryAddress?.city || ord.customer?.city || 'Lagos'}, {ord.deliveryAddress?.state || ord.customer?.state || 'Lagos'}
                         </span>
                         <button
-                          onClick={() => navigateTo('track-order')}
+                          onClick={() =>
+                            navigateTo('track-order', {
+                              orderNumber: ord.orderNumber,
+                              email: ord.customer?.email || ord.customerEmail || currentUser?.email,
+                              token: ord.id,
+                            })
+                          }
                           className="text-xs font-bold text-[#0047AB] hover:text-[#002D72] cursor-pointer"
                         >
                           Track Package &rarr;

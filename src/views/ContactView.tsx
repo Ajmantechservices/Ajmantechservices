@@ -150,8 +150,8 @@ export const ContactView: React.FC = () => {
             <div className="rounded-3xl overflow-hidden border border-slate-200 bg-slate-100 p-4 text-center space-y-2">
               <div className="h-44 rounded-2xl bg-slate-200 flex flex-col items-center justify-center text-slate-500 space-y-1">
                 <MapPin className="w-8 h-8 text-blue-700 animate-bounce" />
-                <span className="font-bold text-xs text-slate-800">AjmanTech Lagos Showroom</span>
-                <span className="text-[11px] text-slate-500">Ikeja / Allen Avenue Hub, Lagos</span>
+                <span className="font-bold text-xs text-slate-800">AjmanTech Lagos Showroom & Office</span>
+                <span className="text-[11px] text-slate-500 max-w-[260px] leading-tight">Folabi Oyeyemi, Royalty Road, Ikota Villa Estate, Lekki, Lagos</span>
               </div>
             </div>
           </div>

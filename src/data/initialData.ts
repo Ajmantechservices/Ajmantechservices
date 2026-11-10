@@ -954,7 +954,7 @@ export const INITIAL_STORE_SETTINGS: StoreSettings = {
   phone: '+234 807 532 9182',
   altPhone: '+234 807 532 9182',
   email: 'info@ajmantech.ng',
-  address: 'Plot 14, Commercial Avenue, Ikeja Electrical Market / Lekki Expressway, Lagos, Nigeria',
+  address: 'Folabi Oyeyemi, Royalty Road, Ikota Villa Estate, Lekki, Lagos, Nigeria',
   openingHours: 'Monday – Saturday: 8:00 AM – 6:30 PM (Sunday: On-Call Emergency Service)',
   deliveryRates: {
     'Lagos': 3500,
@@ -969,7 +969,7 @@ export const INITIAL_STORE_SETTINGS: StoreSettings = {
     'Kano': 8500,
     'Kaduna': 8500,
     'Other States (Nationwide)': 7500,
-    'Store Pickup (Ikeja Showroom)': 0,
+    'Store Pickup (Ikota Villa Estate Showroom)': 0,
   },
   defaultDeliveryFee: 4500,
   freeDeliveryThreshold: 150000,
@@ -977,7 +977,7 @@ export const INITIAL_STORE_SETTINGS: StoreSettings = {
     bankName: 'Zenith Bank Plc',
     accountName: 'AJMANTECH SERVICES NIGERIA LTD',
     accountNumber: '1018942371',
-    branch: 'Ikeja Commercial Branch, Lagos',
+    branch: 'Ikota / Lekki Expressway Branch, Lagos',
   },
   promoCodes: [
     { code: 'AJMANLIGHT10', discountPercent: 10, minOrderAmount: 30000 },

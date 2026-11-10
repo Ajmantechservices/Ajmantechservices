@@ -157,6 +157,7 @@ export const Header: React.FC = () => {
     categories,
     services,
     formatNaira,
+    storeSettings,
   } = useStore();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1028,7 +1029,7 @@ export const Header: React.FC = () => {
                 <div className="mt-1.5 space-y-1 text-[11px] text-slate-500">
                   <p className="flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-[#0047AB] shrink-0" />
-                    <span>Plot 14 Commercial Ave, Ikeja / Lekki, Lagos</span>
+                    <span>{storeSettings?.address || 'Folabi Oyeyemi, Royalty Road, Ikota Villa Estate, Lekki, Lagos, Nigeria'}</span>
                   </p>
                   <p className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
