@@ -264,7 +264,6 @@ export type ActivityActionType =
   | 'product'
   | 'order'
   | 'service'
-  | 'blog'
   | 'settings'
   | 'security';
 
@@ -285,24 +284,6 @@ export type NewActivityLog = Omit<ActivityLog, 'id' | 'timestamp' | 'adminName' 
   adminName?: string;
   adminEmail?: string;
 };
-
-export interface BlogPost {
-  id: string;
-  title: string;
-  slug: string;
-  category: string;
-  author: string;
-  authorRole?: string;
-  excerpt: string;
-  content: string;
-  coverImage: string;
-  status: 'published' | 'draft';
-  readTimeMinutes: number;
-  tags: string[];
-  createdAt: string;
-  updatedAt?: string;
-  views?: number;
-}
 
 export interface ProductGalleryItem {
   id: string;

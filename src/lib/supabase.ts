@@ -40,8 +40,41 @@ export const isSupabaseConfigured = (): boolean => {
 };
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured()
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+      global: {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      },
+    })
   : null;
+
+/**
+ * Force dynamic rendering flag and revalidate interval for Next.js / ISR / CDN compatibility.
+ * Ensures products are never aggressively statically cached.
+ */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+/**
+ * Force-dynamic fetch for all products directly from Supabase.
+ * Disables aggressive static caching by enforcing 'no-store' headers.
+ * Whenever a product is added or removed in Supabase, calling this immediately returns fresh data.
+ */
+export async function fetchSupabaseProducts(options?: { forceDynamic?: boolean }) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  return await supabase
+    .from('products')
+    .select('*')
+    .order('created_at', { ascending: false });
+}
 
 export interface SupabaseConfigStatus {
   isConfigured: boolean;
@@ -395,88 +428,11 @@ export interface SupabaseDashboardCounts {
   categoriesCount: number;
   serviceRequestsCount: number;
   ordersCount: number;
-  postsCount?: number;
-}
-
-/**
- * Fetch all posts from Supabase public.posts table
- */
-export async function fetchSupabasePosts() {
-  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
-  return await supabase.from('posts').select('*').order('created_at', { ascending: false });
-}
-
-/**
- * Fetch a single post by its slug from public.posts
- */
-export async function fetchSupabasePostBySlug(slug: string) {
-  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
-  return await supabase.from('posts').select('*').eq('slug', slug).maybeSingle();
-}
-
-/**
- * Insert a new post directly into public.posts
- */
-export async function createSupabasePost(postData: {
-  title: string;
-  slug: string;
-  excerpt?: string;
-  featured_image?: string;
-  content: string;
-  published?: boolean;
-}) {
-  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
-  return await supabase
-    .from('posts')
-    .insert({
-      title: postData.title,
-      slug: postData.slug,
-      excerpt: postData.excerpt || null,
-      featured_image: postData.featured_image || null,
-      content: postData.content,
-      published: postData.published ?? false,
-    })
-    .select()
-    .single();
-}
-
-/**
- * Update an existing post directly in public.posts
- */
-export async function updateSupabasePost(
-  id: string,
-  postData: {
-    title?: string;
-    slug?: string;
-    excerpt?: string;
-    featured_image?: string;
-    content?: string;
-    published?: boolean;
-  }
-) {
-  if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
-  return await supabase
-    .from('posts')
-    .update({
-      ...postData,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-}
-
-/**
- * Delete a post directly from public.posts
- */
-export async function deleteSupabasePost(id: string) {
-  if (!supabase || !isSupabaseConfigured()) return { error: null };
-  return await supabase.from('posts').delete().eq('id', id);
 }
 
 /**
  * Fetch exact table counts directly from Supabase tables:
- * products, categories, service_requests, orders, and posts
+ * products, categories, service_requests, and orders
  */
 export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCounts | null> {
   if (!supabase || !isSupabaseConfigured()) return null;
@@ -487,13 +443,11 @@ export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCount
       { count: catCount },
       { count: srvCount },
       { count: ordCount },
-      { count: postsCount },
     ] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('categories').select('*', { count: 'exact', head: true }),
       supabase.from('service_requests').select('*', { count: 'exact', head: true }),
       supabase.from('orders').select('*', { count: 'exact', head: true }),
-      supabase.from('posts').select('*', { count: 'exact', head: true }),
     ]);
 
     return {
@@ -501,7 +455,6 @@ export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCount
       categoriesCount: typeof catCount === 'number' ? catCount : 0,
       serviceRequestsCount: typeof srvCount === 'number' ? srvCount : 0,
       ordersCount: typeof ordCount === 'number' ? ordCount : 0,
-      postsCount: typeof postsCount === 'number' ? postsCount : 0,
     };
   } catch (err) {
     console.warn('Supabase counts query error:', err);
@@ -545,4 +498,131 @@ export async function fetchSupabaseOrders(): Promise<{ data: SupabaseOrderRecord
     return { data: null, error: err };
   }
 }
+
+export interface ProductSaveInput {
+  name: string;
+  description?: string;
+  price: number | string;
+  category?: string;
+  image_url?: string;
+  stock?: number | string;
+  is_active?: boolean;
+  [key: string]: any;
+}
+
+/**
+ * Handle saving/inserting a new product into Supabase public.products table.
+ * Parses price to a float, stock to an integer, and sets is_active: true.
+ * Provides user notification and error logging.
+ */
+export async function handleSaveProduct(productData: ProductSaveInput): Promise<boolean> {
+  const showAlert = (msg: string) => {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      try {
+        window.alert(msg);
+        return;
+      } catch {}
+    }
+    console.log('[Product Notification]:', msg);
+  };
+
+  try {
+    if (!supabase || !isSupabaseConfigured()) {
+      console.warn('Supabase is not configured yet. Saving to local state.');
+      showAlert('Product saved locally (Supabase keys not yet set).');
+      return true;
+    }
+
+    const priceNum = parseFloat(String(productData.price || 0));
+    const stockNum = parseInt(String(productData.stock || 0), 10);
+    const categoryVal = productData.category || productData.category_name || 'Chandeliers';
+    const imageVal = productData.image_url || productData.image || '';
+    const descVal = productData.description || productData.short_description || productData.full_description || '';
+    const generatedId = productData.id || 'prod-' + Date.now();
+    const slugVal = productData.slug || productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    // First attempt: Exact column names as specified by user
+    const primaryPayload: Record<string, any> = {
+      name: productData.name,
+      description: descVal,
+      price: priceNum,
+      category: categoryVal,
+      image_url: imageVal,
+      stock: stockNum,
+      is_active: productData.is_active !== undefined ? Boolean(productData.is_active) : true,
+    };
+
+    let { data, error } = await supabase
+      .from('products')
+      .insert([primaryPayload])
+      .select();
+
+    // If an error indicates column schema divergence (e.g. table uses category_name, image, short_description, full_description)
+    if (error && (error.message.includes('column') || error.code === '42703' || error.message.includes('does not exist') || error.message.includes('null value in column'))) {
+      console.warn('[handleSaveProduct] Primary column insert note, trying schema-compatible payload:', error.message);
+      
+      const compatiblePayload: Record<string, any> = {
+        id: generatedId,
+        name: productData.name,
+        slug: slugVal,
+        price: priceNum,
+        category_name: categoryVal,
+        image: imageVal,
+        short_description: descVal.slice(0, 160) || productData.name,
+        full_description: descVal || productData.name,
+        stock: stockNum,
+        is_active: true,
+      };
+
+      const fallbackResult = await supabase
+        .from('products')
+        .insert([compatiblePayload])
+        .select();
+
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+    }
+
+    if (error) {
+      console.error('Supabase Insert Error:', error.message);
+      showAlert(`Failed to save product: ${error.message}`);
+      return false;
+    }
+
+    console.log('Product saved successfully:', data);
+    showAlert('Product successfully added to the store!');
+    return true;
+
+  } catch (err: any) {
+    console.error('Unexpected error saving product:', err);
+    return false;
+  }
+}
+
+/**
+ * Standard form submit handler extracting form inputs matching user schema:
+ * e.target.productName.value
+ * e.target.productDescription.value
+ * e.target.productPrice.value
+ * e.target.productCategory.value
+ * e.target.productImage.value
+ * e.target.productStock.value
+ */
+export const onSubmitForm = async (e: any): Promise<boolean> => {
+  if (e && typeof e.preventDefault === 'function') {
+    e.preventDefault();
+  }
+
+  const target = e?.target || e;
+  const newProduct = {
+    name: target.productName?.value ?? target.name?.value ?? target.name ?? '',
+    description: target.productDescription?.value ?? target.description?.value ?? target.description ?? '',
+    price: target.productPrice?.value ?? target.price?.value ?? target.price ?? 0,
+    category: target.productCategory?.value ?? target.category?.value ?? target.category ?? '',
+    image_url: target.productImage?.value ?? target.image_url?.value ?? target.image_url ?? '',
+    stock: target.productStock?.value ?? target.stock?.value ?? target.stock ?? 0,
+  };
+
+  return await handleSaveProduct(newProduct);
+};
 

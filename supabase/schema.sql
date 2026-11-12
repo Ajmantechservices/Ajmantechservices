@@ -185,21 +185,12 @@ create table if not exists public.store_settings (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 9. BLOG POSTS TABLE (Blog & Article Management for Traffic & SEO)
-create table if not exists public.posts (
-  id uuid default uuid_generate_v4() primary key,
-  title text not null,
-  slug text not null unique,
-  excerpt text,
-  featured_image text,
-  content text not null,
-  author_id uuid references auth.users on delete set null,
-  published boolean default true,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+-- Note: Blog and technical articles have moved to external WordPress.
+-- Ensure any legacy blog tables in Supabase are safely removed:
+drop table if exists public.posts cascade;
+drop table if exists public.blog_posts cascade;
 
--- 10. ROW LEVEL SECURITY (RLS) POLICIES
+-- 9. ROW LEVEL SECURITY (RLS) POLICIES
 alter table public.profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
@@ -209,7 +200,6 @@ alter table public.service_requests enable row level security;
 alter table public.reviews enable row level security;
 alter table public.product_reviews enable row level security;
 alter table public.store_settings enable row level security;
-alter table public.posts enable row level security;
 
 -- Profiles policies
 create policy "Allow users to view own profile" on public.profiles for select using (true);
@@ -223,7 +213,6 @@ create policy "Allow public read on product_gallery" on public.product_gallery f
 create policy "Allow public read on reviews" on public.reviews for select using (true);
 create policy "Allow public read on product_reviews" on public.product_reviews for select using (true);
 create policy "Allow public read on store_settings" on public.store_settings for select using (true);
-create policy "Allow public read on posts" on public.posts for select using (true);
 
 -- Public can insert new orders & service requests & reviews
 create policy "Allow public insert on orders" on public.orders for insert with check (true);
@@ -242,7 +231,6 @@ create policy "Allow all modifications on service_requests" on public.service_re
 create policy "Allow all modifications on reviews" on public.reviews for all using (true) with check (true);
 create policy "Allow all modifications on product_reviews" on public.product_reviews for all using (true) with check (true);
 create policy "Allow all modifications on store_settings" on public.store_settings for all using (true) with check (true);
-create policy "Allow all modifications on posts" on public.posts for all using (true) with check (true);
 
 -- Helper query to promote an admin:
 -- UPDATE public.profiles SET role = 'admin' WHERE email = 'your-email@example.com';

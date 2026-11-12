@@ -20,7 +20,15 @@ export function createClient() {
   const url = resolveEnv('VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL') || 'https://ynrmthgxykbvuvtwhvlq.supabase.co';
   const key = resolveEnv('VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder';
 
-  return createSupabaseClient(url, key);
+  return createSupabaseClient(url, key, {
+    global: {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        Pragma: 'no-cache',
+      },
+    },
+  });
 }
 
+export { handleSaveProduct, onSubmitForm } from '../../lib/supabase';
 export default createClient;

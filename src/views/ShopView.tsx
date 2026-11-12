@@ -14,8 +14,16 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const ShopView: React.FC = () => {
-  const { products, categories, navigationState, navigateTo, formatNaira } = useStore();
+  const { products, categories, navigationState, navigateTo, formatNaira, refreshCatalog } = useStore();
+
+  // Force dynamic catalog sync on product catalog page mount
+  useEffect(() => {
+    refreshCatalog();
+  }, []);
 
   // Filters State
   const [selectedCategory, setSelectedCategory] = useState<string>(

@@ -17,7 +17,6 @@ import {
   ViewState,
   ActivityLog,
   NewActivityLog,
-  BlogPost,
 } from '../types';
 import {
   INITIAL_CATEGORIES,
@@ -28,7 +27,6 @@ import {
   INITIAL_FAQS,
   INITIAL_STORE_SETTINGS,
   INITIAL_ACTIVITY_LOGS,
-  INITIAL_BLOG_POSTS,
 } from '../data/initialData';
 import {
   supabase,
@@ -181,11 +179,6 @@ interface StoreContextType {
   addActivityLog: (log: NewActivityLog) => void;
   clearActivityLogs: () => void;
 
-  // Blog & Posts
-  blogPosts: BlogPost[];
-  addBlogPost: (post: Omit<BlogPost, 'id' | 'createdAt' | 'updatedAt' | 'views'>) => BlogPost;
-  updateBlogPost: (post: BlogPost) => void;
-  deleteBlogPost: (id: string) => void;
 
   // Helpers & Notifications
   formatNaira: (amount: number) => string;
@@ -211,10 +204,21 @@ const STORAGE_KEYS = {
   IS_ADMIN: 'ajmantech_is_admin_v1',
   REGISTERED_USERS: 'ajmantech_registered_customers_v1',
   ACTIVITY_LOGS: 'ajmantech_activity_logs_v1',
-  BLOG_POSTS: 'ajmantech_blog_posts_v1',
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Product Slug or ID URL detection on reload
+  const getInitialProductSlugOrId = (): string | null => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const match = path.match(/^\/(?:product|products)\/([^/?#]+)/i);
+      if (match) return decodeURIComponent(match[1]);
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('openProduct')) return urlParams.get('openProduct');
+    }
+    return null;
+  };
+
   // Navigation State with URL path detection
   const getInitialView = (): ViewState => {
     if (typeof window !== 'undefined') {
@@ -222,7 +226,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (path === '/admin' || path === '/admin/' || path === '/admin/login' || path.startsWith('/admin/login')) return 'admin';
       if (path === '/admin/dashboard' || path.startsWith('/admin/dashboard')) return 'admin-dashboard';
       if (path === '/admin/signup') return 'admin-signup';
-      if (path === '/shop') return 'shop';
+      if (path.startsWith('/product/') || path.startsWith('/products/')) return 'product-detail';
+      if (path === '/shop' || path === '/products' || path === '/product') return 'shop';
       if (path === '/services') return 'services';
       if (path === '/account') return 'account';
       if (path === '/wishlist') return 'wishlist';
@@ -232,7 +237,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const [currentView, setCurrentView] = useState<ViewState>(getInitialView);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(getInitialProductSlugOrId);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -608,23 +613,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadStored(STORAGE_KEYS.ACTIVITY_LOGS, INITIAL_ACTIVITY_LOGS)
   );
 
-  // Blog Posts State
-  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() =>
-    loadStored(STORAGE_KEYS.BLOG_POSTS, INITIAL_BLOG_POSTS)
-  );
 
-  // Sync back to LocalStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(activityLogs));
-    } catch (e) { console.error(e); }
-  }, [activityLogs]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.BLOG_POSTS, JSON.stringify(blogPosts));
-    } catch (e) { console.error(e); }
-  }, [blogPosts]);
 
   useEffect(() => {
     try {
@@ -706,9 +695,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const fetchSupabaseData = async () => {
       try {
-        // 1. Fetch products
-        const { data: dbProducts, error: prodErr } = await supabase.from('products').select('*');
-        if (!prodErr && dbProducts && dbProducts.length > 0) {
+        // 1. Force-dynamic fetch products from Supabase (no-store cache)
+        const { data: dbProducts, error: prodErr } = await supabase
+          .from('products')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!prodErr && Array.isArray(dbProducts)) {
           const mappedProducts: Product[] = dbProducts.map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -825,6 +818,43 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     fetchSupabaseData();
+
+    // Realtime Postgres changes subscription: instantly reflects any additions or deletions in Supabase
+    const realtimeChannel = supabase
+      .channel('public_products_live_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        () => {
+          fetchSupabaseData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'categories' },
+        () => {
+          fetchSupabaseData();
+        }
+      )
+      .subscribe();
+
+    // Revalidate immediately whenever the browser window/tab gains focus
+    const handleFocus = () => {
+      fetchSupabaseData();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocus);
+      window.addEventListener('online', handleFocus);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleFocus);
+        window.removeEventListener('online', handleFocus);
+      }
+      supabase.removeChannel(realtimeChannel);
+    };
   }, []);
 
 
@@ -832,10 +862,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
+      const prodMatch = window.location.pathname.match(/^\/(?:product|products)\/([^/?#]+)/i);
+      if (prodMatch) {
+        setSelectedProductId(decodeURIComponent(prodMatch[1]));
+        setCurrentView('product-detail');
+        return;
+      }
       if (path === '/admin' || path === '/admin/' || path === '/admin/login') setCurrentView('admin');
       else if (path === '/admin/dashboard') setCurrentView('admin-dashboard');
       else if (path === '/admin/signup') setCurrentView('admin-signup');
-      else if (path === '/shop') setCurrentView('shop');
+      else if (path === '/shop' || path === '/products') setCurrentView('shop');
       else if (path === '/services') setCurrentView('services');
       else if (path === '/account') setCurrentView('account');
       else if (path === '/wishlist') setCurrentView('wishlist');
@@ -890,6 +926,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       else if (view === 'about') targetPath = '/about';
       else if (view === 'contact') targetPath = '/contact';
       else if (view === 'track-order') targetPath = '/track';
+      else if (view === 'product-detail' && (params?.productId || selectedProductId)) {
+        const pId = params?.productId || selectedProductId;
+        targetPath = `/product/${encodeURIComponent(pId!)}`;
+      }
 
       try {
         if (window.location.pathname !== targetPath) {
@@ -954,54 +994,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     showToast('Activity audit logs cleared.', 'info');
   };
 
-  // Blog Posts Handlers
-  const addBlogPost = (postData: Omit<BlogPost, 'id' | 'createdAt' | 'updatedAt' | 'views'>): BlogPost => {
-    const newPost: BlogPost = {
-      ...postData,
-      id: 'post-' + Date.now(),
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-      views: 0,
-    };
-    setBlogPosts((prev) => [newPost, ...prev]);
-    addActivityLog({
-      actionType: 'blog',
-      title: `Article Created: ${newPost.title}`,
-      details: `New article created in category "${newPost.category}" (Status: ${newPost.status.toUpperCase()})`,
-      severity: 'info',
-    });
-    showToast(`Article "${newPost.title}" created successfully!`, 'success');
-    return newPost;
-  };
-
-  const updateBlogPost = (updatedPost: BlogPost) => {
-    setBlogPosts((prev) =>
-      prev.map((post) =>
-        post.id === updatedPost.id
-          ? { ...updatedPost, updatedAt: new Date().toISOString().split('T')[0] }
-          : post
-      )
-    );
-    addActivityLog({
-      actionType: 'blog',
-      title: `Article Updated: ${updatedPost.title}`,
-      details: `Status: ${updatedPost.status.toUpperCase()} • Category: ${updatedPost.category}`,
-      severity: 'info',
-    });
-    showToast(`Article "${updatedPost.title}" updated!`, 'success');
-  };
-
-  const deleteBlogPost = (id: string) => {
-    const postToDelete = blogPosts.find((p) => p.id === id);
-    setBlogPosts((prev) => prev.filter((p) => p.id !== id));
-    addActivityLog({
-      actionType: 'blog',
-      title: 'Article Deleted',
-      details: `Article "${postToDelete?.title || id}" was permanently removed`,
-      severity: 'warning',
-    });
-    showToast('Article deleted.', 'info');
-  };
 
   // Cart operations
   const addToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
@@ -2031,8 +2023,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const refreshCatalog = async () => {
     if (!isSupabaseConfigured() || !supabase) return;
     try {
-      const { data: dbProducts } = await supabase.from('products').select('*');
-      if (dbProducts && dbProducts.length > 0) {
+      const { data: dbProducts, error: prodErr } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!prodErr && Array.isArray(dbProducts)) {
         const mappedProducts: Product[] = dbProducts.map((p: any) => ({
           id: p.id,
           name: p.name,
@@ -2063,8 +2059,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setProducts(mappedProducts);
       }
 
-      const { data: dbCats } = await supabase.from('categories').select('*');
-      if (dbCats && dbCats.length > 0) {
+      const { data: dbCats, error: catErr } = await supabase.from('categories').select('*');
+      if (!catErr && Array.isArray(dbCats)) {
         const mappedCats: Category[] = dbCats.map((c: any) => ({
           id: c.id,
           name: c.name,
@@ -2218,11 +2214,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         addActivityLog,
         clearActivityLogs,
 
-        // Blog & Posts
-        blogPosts,
-        addBlogPost,
-        updateBlogPost,
-        deleteBlogPost,
 
         addReview,
         getProductReviews,

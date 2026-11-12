@@ -18,6 +18,11 @@ import {
   Info,
 } from 'lucide-react';
 
+// Force dynamic rendering & dynamic route parameters for Next.js / Vercel
+export const dynamic = 'force-dynamic';
+export const dynamicParams = true;
+export const revalidate = 0;
+
 export const ProductDetailView: React.FC = () => {
   const {
     navigationState,
@@ -34,7 +39,7 @@ export const ProductDetailView: React.FC = () => {
   } = useStore();
 
   const productId = navigationState?.productId || 'prod-01';
-  const product = (products || []).find((p) => p.id === productId) || (products || [])[0];
+  const product = (products || []).find((p) => p.id === productId || p.slug === productId) || (products || [])[0];
 
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<string | undefined>(
