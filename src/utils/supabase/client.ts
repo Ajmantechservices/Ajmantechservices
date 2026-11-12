@@ -30,5 +30,12 @@ export function createClient() {
   });
 }
 
-export { handleSaveProduct, onSubmitForm } from '../../lib/supabase';
+export {
+  handleSaveProduct,
+  onSubmitForm,
+  insertSupabaseProduct,
+  updateSupabaseProduct,
+  buildCleanProductPayload,
+  extractMissingColumnFromError,
+} from '../../lib/supabase';
 export default createClient;

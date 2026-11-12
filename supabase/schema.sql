@@ -234,3 +234,14 @@ create policy "Allow all modifications on store_settings" on public.store_settin
 
 -- Helper query to promote an admin:
 -- UPDATE public.profiles SET role = 'admin' WHERE email = 'your-email@example.com';
+
+-- Schema Migration Helper: Standardize clean column names on products table
+alter table public.products add column if not exists image_url text;
+alter table public.products add column if not exists description text;
+alter table public.products add column if not exists category text;
+alter table public.products add column if not exists is_active boolean default true;
+
+-- Backfill clean columns from legacy columns if present
+update public.products set image_url = image where image_url is null and image is not null;
+update public.products set description = full_description where description is null and full_description is not null;
+update public.products set category = category_name where category is null and category_name is not null;

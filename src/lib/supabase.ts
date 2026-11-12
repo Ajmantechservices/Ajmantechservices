@@ -500,101 +500,259 @@ export async function fetchSupabaseOrders(): Promise<{ data: SupabaseOrderRecord
 }
 
 export interface ProductSaveInput {
+  id?: string;
   name: string;
   description?: string;
+  full_description?: string;
+  short_description?: string;
   price: number | string;
   category?: string;
+  category_name?: string;
   image_url?: string;
+  image?: string;
   stock?: number | string;
   is_active?: boolean;
+  slug?: string;
+  brand?: string;
   [key: string]: any;
 }
 
 /**
- * Handle saving/inserting a new product into Supabase public.products table.
- * Parses price to a float, stock to an integer, and sets is_active: true.
- * Provides user notification and error logging.
+ * Extracts the exact missing or offending column name from Supabase / Postgres error messages.
+ * e.g., 'column "image" of relation "products" does not exist' -> 'image'
+ * e.g., 'null value in column "category_name" violates not-null constraint' -> 'category_name'
  */
-export async function handleSaveProduct(productData: ProductSaveInput): Promise<boolean> {
-  const showAlert = (msg: string) => {
-    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-      try {
-        window.alert(msg);
-        return;
-      } catch {}
-    }
-    console.log('[Product Notification]:', msg);
+export function extractMissingColumnFromError(error: any): string | null {
+  if (!error) return null;
+  const msg = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+
+  const matchNotExist = msg.match(/column\s+"([^"]+)"\s+(?:of\s+relation\s+"[^"]+"\s+)?does\s+not\s+exist/i);
+  if (matchNotExist) return matchNotExist[1];
+
+  const matchNotNull = msg.match(/null\s+value\s+in\s+column\s+"([^"]+)"/i);
+  if (matchNotNull) return matchNotNull[1];
+
+  const matchGeneric = msg.match(/column\s+["']?([a-zA-Z0-9_]+)["']?/i);
+  if (matchGeneric) return matchGeneric[1];
+
+  return null;
+}
+
+/**
+ * Builds a strictly clean standard product payload:
+ * image_url (not image), description (not full_description), category (not category_name), is_active: true
+ */
+export function buildCleanProductPayload(productData: ProductSaveInput) {
+  const priceNum = parseFloat(String(productData.price || 0));
+  const stockNum = parseInt(String(productData.stock ?? 0), 10);
+  const nameStr = String(productData.name || '').trim();
+  const descStr = String(
+    productData.description ||
+    productData.full_description ||
+    productData.short_description ||
+    ''
+  ).trim();
+  const catStr = String(productData.category || productData.category_name || 'Chandeliers').trim();
+  const imgStr = String(
+    productData.image_url ||
+    productData.image ||
+    (Array.isArray(productData.images) ? productData.images[0] : '') ||
+    ''
+  ).trim();
+  const idStr = productData.id || ('prod-' + Date.now());
+  const slugStr = productData.slug || nameStr.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || idStr;
+
+  return {
+    id: idStr,
+    name: nameStr,
+    description: descStr,
+    price: isNaN(priceNum) ? 0 : priceNum,
+    category: catStr,
+    image_url: imgStr,
+    stock: isNaN(stockNum) ? 0 : stockNum,
+    is_active: productData.is_active !== undefined ? Boolean(productData.is_active) : true,
+    slug: slugStr,
+    brand: productData.brand || 'AjmanTech',
+  };
+}
+
+const triggerAlert = (msg: string) => {
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    try {
+      window.alert(msg);
+      return;
+    } catch {}
+  }
+  console.log('[Product Notification]:', msg);
+};
+
+/**
+ * Inserts a product into Supabase 'products' table using clean standard column names.
+ * Features automatic schema mismatch auditing, console field logging, and graceful user alert.
+ */
+export async function insertSupabaseProduct(
+  productData: ProductSaveInput
+): Promise<{ success: boolean; data?: any; error?: any; missingField?: string }> {
+  if (!supabase || !isSupabaseConfigured()) {
+    console.warn('[Supabase Insert Audit] Supabase client not configured. Saved in local memory.');
+    return { success: true };
+  }
+
+  const clean = buildCleanProductPayload(productData);
+
+  // 1. Primary Clean Insert with strictly standard column names
+  const primaryCleanPayload: Record<string, any> = {
+    id: clean.id,
+    name: clean.name,
+    description: clean.description,
+    price: clean.price,
+    category: clean.category,
+    image_url: clean.image_url,
+    stock: clean.stock,
+    is_active: clean.is_active,
+    slug: clean.slug,
+    brand: clean.brand,
   };
 
-  try {
-    if (!supabase || !isSupabaseConfigured()) {
-      console.warn('Supabase is not configured yet. Saving to local state.');
-      showAlert('Product saved locally (Supabase keys not yet set).');
-      return true;
-    }
+  let { data, error } = await supabase
+    .from('products')
+    .insert([primaryCleanPayload])
+    .select();
 
-    const priceNum = parseFloat(String(productData.price || 0));
-    const stockNum = parseInt(String(productData.stock || 0), 10);
-    const categoryVal = productData.category || productData.category_name || 'Chandeliers';
-    const imageVal = productData.image_url || productData.image || '';
-    const descVal = productData.description || productData.short_description || productData.full_description || '';
-    const generatedId = productData.id || 'prod-' + Date.now();
-    const slugVal = productData.slug || productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  // 2. Audit schema mismatch
+  if (error) {
+    const missingField = extractMissingColumnFromError(error);
+    console.error(`[Supabase Product Schema Audit] Column mismatch detected on field '${missingField || 'unknown'}'. Error:`, error.message);
 
-    // First attempt: Exact column names as specified by user
-    const primaryPayload: Record<string, any> = {
-      name: productData.name,
-      description: descVal,
-      price: priceNum,
-      category: categoryVal,
-      image_url: imageVal,
-      stock: stockNum,
-      is_active: productData.is_active !== undefined ? Boolean(productData.is_active) : true,
+    // Build adaptive payload supplying legacy column aliases for seamless compatibility
+    const adaptivePayload: Record<string, any> = {
+      ...primaryCleanPayload,
+      category_name: clean.category,
+      image: clean.image_url,
+      short_description: clean.description.slice(0, 160) || clean.name,
+      full_description: clean.description || clean.name,
+      gallery: Array.isArray(productData.gallery) ? productData.gallery : [clean.image_url],
+      specifications: productData.specifications || {},
+      tags: productData.tags || ['lighting'],
+      voltage: productData.voltage || '220V-240V',
+      warranty: productData.warranty || '1 Year',
     };
 
-    let { data, error } = await supabase
+    // If error was about a specific clean column not existing in table, omit that specific field
+    if (missingField && error.message.includes('does not exist')) {
+      delete adaptivePayload[missingField];
+    }
+
+    const retryResult = await supabase
       .from('products')
-      .insert([primaryPayload])
+      .insert([adaptivePayload])
       .select();
 
-    // If an error indicates column schema divergence (e.g. table uses category_name, image, short_description, full_description)
-    if (error && (error.message.includes('column') || error.code === '42703' || error.message.includes('does not exist') || error.message.includes('null value in column'))) {
-      console.warn('[handleSaveProduct] Primary column insert note, trying schema-compatible payload:', error.message);
-      
-      const compatiblePayload: Record<string, any> = {
-        id: generatedId,
-        name: productData.name,
-        slug: slugVal,
-        price: priceNum,
-        category_name: categoryVal,
-        image: imageVal,
-        short_description: descVal.slice(0, 160) || productData.name,
-        full_description: descVal || productData.name,
-        stock: stockNum,
-        is_active: true,
-      };
-
-      const fallbackResult = await supabase
-        .from('products')
-        .insert([compatiblePayload])
-        .select();
-
-      data = fallbackResult.data;
-      error = fallbackResult.error;
-    }
+    data = retryResult.data;
+    error = retryResult.error;
 
     if (error) {
-      console.error('Supabase Insert Error:', error.message);
-      showAlert(`Failed to save product: ${error.message}`);
-      return false;
+      const finalMissingField = extractMissingColumnFromError(error) || missingField;
+      console.error(`[Supabase Database Error] Failed to insert product. Problematic column: '${finalMissingField || 'schema'}'. Full error:`, error.message);
+      triggerAlert(`Notice: Unable to save product to database due to column '${finalMissingField || 'schema'}': ${error.message}`);
+      return { success: false, error, missingField: finalMissingField || undefined };
+    }
+  }
+
+  console.log('[Supabase Product Insert] Product saved successfully:', data);
+  return { success: true, data };
+}
+
+/**
+ * Updates a product in Supabase 'products' table using clean standard column names.
+ * Audits columns, logs exact missing field on failure, and avoids column schema breakage.
+ */
+export async function updateSupabaseProduct(
+  productId: string,
+  productData: ProductSaveInput
+): Promise<{ success: boolean; data?: any; error?: any; missingField?: string }> {
+  if (!supabase || !isSupabaseConfigured()) {
+    console.warn('[Supabase Update Audit] Supabase client not configured. Product updated locally.');
+    return { success: true };
+  }
+
+  const clean = buildCleanProductPayload({ ...productData, id: productId });
+
+  // 1. Primary Clean Update with strictly standard column names
+  const primaryCleanUpdate: Record<string, any> = {
+    name: clean.name,
+    description: clean.description,
+    price: clean.price,
+    category: clean.category,
+    image_url: clean.image_url,
+    stock: clean.stock,
+    is_active: clean.is_active,
+    slug: clean.slug,
+    brand: clean.brand,
+  };
+
+  let { data, error } = await supabase
+    .from('products')
+    .update(primaryCleanUpdate)
+    .eq('id', productId)
+    .select();
+
+  // 2. Audit schema mismatch on update
+  if (error) {
+    const missingField = extractMissingColumnFromError(error);
+    console.error(`[Supabase Product Schema Audit] Update column mismatch detected on field '${missingField || 'unknown'}'. Error:`, error.message);
+
+    // Adaptive update payload with both clean and legacy columns
+    const adaptiveUpdate: Record<string, any> = {
+      ...primaryCleanUpdate,
+      category_name: clean.category,
+      image: clean.image_url,
+      short_description: clean.description.slice(0, 160) || clean.name,
+      full_description: clean.description || clean.name,
+      gallery: Array.isArray(productData.gallery) ? productData.gallery : [clean.image_url],
+    };
+
+    if (missingField && error.message.includes('does not exist')) {
+      delete adaptiveUpdate[missingField];
     }
 
-    console.log('Product saved successfully:', data);
-    showAlert('Product successfully added to the store!');
-    return true;
+    const retryResult = await supabase
+      .from('products')
+      .update(adaptiveUpdate)
+      .eq('id', productId)
+      .select();
 
+    data = retryResult.data;
+    error = retryResult.error;
+
+    if (error) {
+      const finalMissingField = extractMissingColumnFromError(error) || missingField;
+      console.error(`[Supabase Database Error] Failed to update product. Problematic column: '${finalMissingField || 'schema'}'. Full error:`, error.message);
+      triggerAlert(`Notice: Unable to update product in database due to column '${finalMissingField || 'schema'}': ${error.message}`);
+      return { success: false, error, missingField: finalMissingField || undefined };
+    }
+  }
+
+  console.log('[Supabase Product Update] Product updated successfully:', data);
+  return { success: true, data };
+}
+
+/**
+ * Handle saving/inserting a new product into Supabase public.products table.
+ * Strictly uses clean column names (image_url, description, category, price, stock, is_active).
+ * Logs missing fields and provides user alerting.
+ */
+export async function handleSaveProduct(productData: ProductSaveInput): Promise<boolean> {
+  try {
+    const res = await insertSupabaseProduct(productData);
+    if (!res.success) {
+      return false;
+    }
+    triggerAlert('Product successfully added to the store!');
+    return true;
   } catch (err: any) {
-    console.error('Unexpected error saving product:', err);
+    console.error('[Supabase Save Error] Unexpected error saving product:', err);
+    triggerAlert(`Unexpected error saving product: ${err?.message || 'Unknown database issue'}`);
     return false;
   }
 }
@@ -614,7 +772,7 @@ export const onSubmitForm = async (e: any): Promise<boolean> => {
   }
 
   const target = e?.target || e;
-  const newProduct = {
+  const newProduct: ProductSaveInput = {
     name: target.productName?.value ?? target.name?.value ?? target.name ?? '',
     description: target.productDescription?.value ?? target.description?.value ?? target.description ?? '',
     price: target.productPrice?.value ?? target.price?.value ?? target.price ?? 0,

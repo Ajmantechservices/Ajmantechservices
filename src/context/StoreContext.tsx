@@ -38,6 +38,8 @@ import {
   addImagesToProductGallery,
   removeProductGalleryImage,
   TARGET_ADMIN_EMAIL,
+  insertSupabaseProduct,
+  updateSupabaseProduct,
 } from '../lib/supabase';
 
 
@@ -707,19 +709,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             name: p.name,
             slug: p.slug || p.id,
             brand: p.brand || 'AjmanTech',
-            category: p.category_name,
+            category: p.category || p.category_name || 'Chandeliers',
             price: Number(p.price),
             discountPrice: p.original_price ? Number(p.price) : undefined,
             stock: p.stock ?? 10,
             rating: p.rating ? Number(p.rating) : 5.0,
             reviewCount: p.review_count ?? 0,
-            images: Array.isArray(p.gallery) && p.gallery.length > 0 ? p.gallery : [p.image],
+            images: Array.isArray(p.gallery) && p.gallery.length > 0
+              ? p.gallery
+              : [p.image_url || p.image || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=800&auto=format&fit=crop'],
             isFeatured: Boolean(p.is_featured),
             isBestSeller: Boolean(p.is_best_seller),
             isNewArrival: Boolean(p.is_new),
             tags: Array.isArray(p.tags) ? p.tags : ['lighting'],
-            shortDescription: p.short_description || p.name,
-            description: p.full_description || p.short_description || p.name,
+            shortDescription: p.short_description || (p.description ? p.description.slice(0, 120) : p.name),
+            description: p.description || p.full_description || p.short_description || p.name,
             specifications: {
               wattage: p.specifications?.wattage || p.voltage || '48W',
               voltage: p.voltage || '220V - 240V',
@@ -1713,30 +1717,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     setProducts((prev) => [newProduct, ...prev]);
 
-    // Direct Supabase sync if connected
+    // Direct Supabase sync using audited clean column names
     if (isSupabaseConfigured() && supabase) {
       try {
-        await supabase.from('products').insert({
+        await insertSupabaseProduct({
           id: newProduct.id,
           name: newProduct.name,
           slug: newProduct.slug || newProduct.id,
           brand: newProduct.brand || 'AjmanTech',
-          category_name: newProduct.category,
+          category: newProduct.category,
           price: newProduct.price,
-          original_price: newProduct.discountPrice || null,
           stock: newProduct.stock,
-          rating: newProduct.rating || 5.0,
-          image: newProduct.images[0] || '',
+          image_url: newProduct.images[0] || '',
+          description: newProduct.description || newProduct.shortDescription,
+          is_active: true,
           gallery: newProduct.images || [],
-          short_description: newProduct.shortDescription || newProduct.name,
-          full_description: newProduct.description || newProduct.shortDescription,
           specifications: newProduct.specifications || {},
           tags: newProduct.tags || [],
           voltage: newProduct.specifications?.voltage || '220V-240V',
           warranty: newProduct.specifications?.warranty || '1 Year',
         });
-      } catch (err) {
-        console.warn('Supabase product insert notice:', err);
+      } catch (err: any) {
+        console.error('[StoreContext addProduct Error]:', err);
       }
     }
 
@@ -1755,26 +1757,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (isSupabaseConfigured() && supabase) {
       try {
-        await supabase.from('products').upsert({
-          id: updated.id,
+        await updateSupabaseProduct(updated.id, {
           name: updated.name,
           slug: updated.slug || updated.id,
           brand: updated.brand,
-          category_name: updated.category,
+          category: updated.category,
           price: updated.price,
-          original_price: updated.discountPrice || null,
           stock: updated.stock,
-          image: updated.images[0] || '',
+          image_url: updated.images[0] || '',
+          description: updated.description || updated.shortDescription,
+          is_active: true,
           gallery: updated.images,
-          short_description: updated.shortDescription,
-          full_description: updated.description,
           specifications: updated.specifications,
           tags: updated.tags,
           voltage: updated.specifications?.voltage || '220V-240V',
           warranty: updated.specifications?.warranty || '1 Year',
         });
-      } catch (err) {
-        console.warn('Supabase product update notice:', err);
+      } catch (err: any) {
+        console.error('[StoreContext updateProduct Error]:', err);
       }
     }
 
@@ -2034,19 +2034,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           name: p.name,
           slug: p.slug || p.id,
           brand: p.brand || 'AjmanTech',
-          category: p.category_name,
+          category: p.category || p.category_name || 'Chandeliers',
           price: Number(p.price),
           discountPrice: p.original_price ? Number(p.price) : undefined,
           stock: p.stock ?? 10,
           rating: p.rating ? Number(p.rating) : 5.0,
           reviewCount: p.review_count ?? 0,
-          images: Array.isArray(p.gallery) && p.gallery.length > 0 ? p.gallery : [p.image],
+          images: Array.isArray(p.gallery) && p.gallery.length > 0
+            ? p.gallery
+            : [p.image_url || p.image || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=800&auto=format&fit=crop'],
           isFeatured: Boolean(p.is_featured),
           isBestSeller: Boolean(p.is_best_seller),
           isNewArrival: Boolean(p.is_new),
           tags: Array.isArray(p.tags) ? p.tags : ['lighting'],
-          shortDescription: p.short_description || p.name,
-          description: p.full_description || p.short_description || p.name,
+          shortDescription: p.short_description || (p.description ? p.description.slice(0, 120) : p.name),
+          description: p.description || p.full_description || p.short_description || p.name,
           specifications: {
             wattage: p.specifications?.wattage || p.voltage || '48W',
             voltage: p.voltage || '220V - 240V',
