@@ -26,6 +26,7 @@ import { AdminDashboardView } from './views/AdminDashboardView';
 import { AdminLoginView } from './views/AdminLoginView';
 import { AdminSignupView } from './views/AdminSignupView';
 import { DashboardMenuView } from './views/DashboardMenuView';
+import AdminProductsPage from '../app/admin/products/page';
 
 const MainRouter: React.FC = () => {
   const { currentView, isAdmin } = useStore();
@@ -71,6 +72,8 @@ const MainRouter: React.FC = () => {
         return <AdminSignupView />;
       case 'admin-dashboard':
         return isAdmin ? <AdminDashboardView /> : <AdminLoginView />;
+      case 'admin-products':
+        return isAdmin ? <AdminProductsPage /> : <AdminLoginView />;
       case 'admin':
         return isAdmin ? <AdminDashboardView /> : <AdminLoginView />;
       default:
@@ -79,7 +82,7 @@ const MainRouter: React.FC = () => {
   };
 
   const isDedicatedAdminDashboard =
-    (currentView === 'admin' || currentView === 'admin-dashboard') && isAdmin;
+    (currentView === 'admin' || currentView === 'admin-dashboard' || currentView === 'admin-products') && isAdmin;
 
   if (currentView === 'services-portal') {
     return (

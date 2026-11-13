@@ -323,4 +323,5 @@ export type ViewState =
   | 'admin'
   | 'admin-login'
   | 'admin-signup'
-  | 'admin-dashboard';
+  | 'admin-dashboard'
+  | 'admin-products';

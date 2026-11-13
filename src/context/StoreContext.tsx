@@ -225,6 +225,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const getInitialView = (): ViewState => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
+      if (path === '/admin/products' || path.startsWith('/admin/products')) return 'admin-products';
       if (path === '/admin' || path === '/admin/' || path === '/admin/login' || path.startsWith('/admin/login')) return 'admin';
       if (path === '/admin/dashboard' || path.startsWith('/admin/dashboard')) return 'admin-dashboard';
       if (path === '/admin/signup') return 'admin-signup';
@@ -872,7 +873,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setCurrentView('product-detail');
         return;
       }
-      if (path === '/admin' || path === '/admin/' || path === '/admin/login') setCurrentView('admin');
+      if (path === '/admin/products' || path.startsWith('/admin/products')) setCurrentView('admin-products');
+      else if (path === '/admin' || path === '/admin/' || path === '/admin/login') setCurrentView('admin');
       else if (path === '/admin/dashboard') setCurrentView('admin-dashboard');
       else if (path === '/admin/signup') setCurrentView('admin-signup');
       else if (path === '/shop' || path === '/products') setCurrentView('shop');
@@ -920,6 +922,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (typeof window !== 'undefined' && window.history) {
       let targetPath = '/';
       if (view === 'admin' || view === 'admin-login') targetPath = '/admin';
+      else if (view === 'admin-products') targetPath = '/admin/products';
       else if (view === 'admin-dashboard') targetPath = '/admin';
       else if (view === 'admin-signup') targetPath = '/admin/signup';
       else if (view === 'account') targetPath = '/account';

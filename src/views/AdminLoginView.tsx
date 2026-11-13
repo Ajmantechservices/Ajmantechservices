@@ -53,7 +53,8 @@ TO authenticated
 USING (true);`;
 
 export const AdminLoginView: React.FC = () => {
-  const { adminLogin, navigateTo, showToast, isAdmin: storeIsAdmin, currentUser } = useStore();
+  const { adminLogin, navigateTo, showToast, isAdmin: storeIsAdmin, currentUser, currentView } = useStore();
+  const postLoginView = currentView === 'admin-products' ? 'admin-products' : 'admin-dashboard';
 
   // Auth Mode: 'signin' | 'signup'
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -96,7 +97,7 @@ export const AdminLoginView: React.FC = () => {
     let isMounted = true;
 
     if (storeIsAdmin && currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()) {
-      navigateTo('admin-dashboard');
+      navigateTo(postLoginView);
       return;
     }
 
@@ -110,7 +111,7 @@ export const AdminLoginView: React.FC = () => {
               const loginRes = await adminLogin(data.session.user.email!, TARGET_ADMIN_PASSWORD);
               if (loginRes.success) {
                 showToast('Welcome back, Site Owner!', 'success');
-                navigateTo('admin-dashboard');
+                navigateTo(postLoginView);
               }
             }
           }
@@ -173,13 +174,13 @@ export const AdminLoginView: React.FC = () => {
       const loginRes = await adminLogin(inputEmail, pass);
       if (loginRes.success) {
         showToast('Signed in successfully! Opening Product & Order Manager...', 'success');
-        navigateTo('admin-dashboard');
+        navigateTo(postLoginView);
       } else {
         // Fallback master bypass
         const masterRes = await adminLogin(TARGET_ADMIN_EMAIL, TARGET_ADMIN_PASSWORD);
         if (masterRes.success) {
           showToast('Welcome back, Engr. Abiodun Ajayi!', 'success');
-          navigateTo('admin-dashboard');
+          navigateTo(postLoginView);
         } else {
           setErrorMessage(loginRes.message || 'Invalid credentials.');
           showToast(loginRes.message || 'Invalid credentials.', 'error');
