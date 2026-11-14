@@ -3,14 +3,14 @@ import { createClient } from '../src/utils/supabase/client';
 
 // Force dynamic rendering - disable aggressive static caching in Next.js / ISR
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 0; // Ensures new admin updates show up immediately
 
 /**
  * Fetches products directly from Supabase with zero static caching.
  * Uses { cache: 'no-store' } behavior so live additions or deletions
  * reflect immediately on refresh.
  */
-export async function getProducts() {
+export async function getStoreProducts() {
   const supabase = createClient();
   const { data: products, error } = await supabase
     .from('products')
@@ -24,8 +24,10 @@ export async function getProducts() {
   return products || [];
 }
 
+export const getProducts = getStoreProducts;
+
 export default async function HomePage() {
-  const products = await getProducts();
+  const products = await getStoreProducts();
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">

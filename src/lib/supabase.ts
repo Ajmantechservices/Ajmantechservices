@@ -46,6 +46,8 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
         autoRefreshToken: true,
       },
       global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, { ...init, cache: 'no-store' }),
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
           Pragma: 'no-cache',
@@ -60,6 +62,26 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
  */
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+/**
+ * Storefront Server/Client helper to fetch products directly from Supabase
+ * with revalidate = 0 and cache: 'no-store' so new admin updates appear immediately.
+ */
+export async function getStoreProducts() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return [];
+  }
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[getStoreProducts] Error fetching products:', error.message);
+    return [];
+  }
+  return data || [];
+}
 
 /**
  * Force-dynamic fetch for all products directly from Supabase.

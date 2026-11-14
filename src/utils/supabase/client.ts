@@ -22,6 +22,8 @@ export function createClient() {
 
   return createSupabaseClient(url, key, {
     global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: 'no-store' }),
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
         Pragma: 'no-cache',
@@ -31,6 +33,9 @@ export function createClient() {
 }
 
 export {
+  revalidate,
+  dynamic,
+  getStoreProducts,
   handleSaveProduct,
   onSubmitForm,
   insertSupabaseProduct,
