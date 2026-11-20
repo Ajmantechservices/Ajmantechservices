@@ -794,13 +794,6 @@ export const AdminDashboardView: React.FC = () => {
       await updateProduct(updated);
       showToast(`Product "${updated.name}" updated successfully!`, 'success');
     } else {
-      // Save directly to Supabase with exact handleSaveProduct handler
-      const success = await saveProductToSupabase(newProduct);
-      if (!success) {
-        showToast('Database column error: check console for exact field details.', 'error');
-        return;
-      }
-
       const newSku = `AJM-${String(newProduct.category).slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
       await addProduct({
         slug: calculatedSlug,

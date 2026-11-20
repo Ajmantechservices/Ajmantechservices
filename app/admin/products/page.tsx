@@ -128,7 +128,10 @@ export default function AdminProductsPage() {
           });
         } else {
           const localItem: AdminProductRecord = {
-            id: 'prod-' + Date.now(),
+            id:
+              typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : 'prod-' + Date.now(),
             ...productPayload,
             created_at: new Date().toISOString(),
           };

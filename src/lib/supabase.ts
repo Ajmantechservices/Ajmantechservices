@@ -384,11 +384,32 @@ export async function removeProductGalleryImagesByUrl(productId: string, imageUr
     .in('image_url', imageUrls);
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(value?: string | null): boolean {
+  return Boolean(value && UUID_REGEX.test(value.trim()));
+}
+
+export function isMissingTableError(error: any): boolean {
+  if (!error) return false;
+  const code = String(error.code || '');
+  const msg = String(error.message || '').toLowerCase();
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    msg.includes('could not find the table') ||
+    msg.includes('relation') && msg.includes('does not exist')
+  );
+}
+
 /**
  * Delete a single product from Supabase products table
  */
 export async function deleteSupabaseProduct(productId: string) {
   if (!supabase || !isSupabaseConfigured()) return { data: null, error: null };
+  if (!isValidUuid(productId)) {
+    return { data: null, error: null };
+  }
   return await supabase.from('products').delete().eq('id', productId);
 }
 
@@ -397,7 +418,9 @@ export async function deleteSupabaseProduct(productId: string) {
  */
 export async function deleteSupabaseProducts(productIds: string[]) {
   if (!supabase || !isSupabaseConfigured() || productIds.length === 0) return { data: null, error: null };
-  return await supabase.from('products').delete().in('id', productIds);
+  const validIds = productIds.filter((id) => isValidUuid(id));
+  if (validIds.length === 0) return { data: null, error: null };
+  return await supabase.from('products').delete().in('id', validIds);
 }
 
 /**
@@ -460,12 +483,7 @@ export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCount
   if (!supabase || !isSupabaseConfigured()) return null;
 
   try {
-    const [
-      { count: prodCount },
-      { count: catCount },
-      { count: srvCount },
-      { count: ordCount },
-    ] = await Promise.all([
+    const [prodRes, catRes, srvRes, ordRes] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('categories').select('*', { count: 'exact', head: true }),
       supabase.from('service_requests').select('*', { count: 'exact', head: true }),
@@ -473,10 +491,10 @@ export async function fetchSupabaseTableCounts(): Promise<SupabaseDashboardCount
     ]);
 
     return {
-      productsCount: typeof prodCount === 'number' ? prodCount : 0,
-      categoriesCount: typeof catCount === 'number' ? catCount : 0,
-      serviceRequestsCount: typeof srvCount === 'number' ? srvCount : 0,
-      ordersCount: typeof ordCount === 'number' ? ordCount : 0,
+      productsCount: typeof prodRes.count === 'number' ? prodRes.count : 0,
+      categoriesCount: typeof catRes.count === 'number' ? catRes.count : 0,
+      serviceRequestsCount: typeof srvRes.count === 'number' ? srvRes.count : 0,
+      ordersCount: !ordRes.error && typeof ordRes.count === 'number' ? ordRes.count : 0,
     };
   } catch (err) {
     console.warn('Supabase counts query error:', err);
@@ -514,6 +532,9 @@ export async function fetchSupabaseOrders(): Promise<{ data: SupabaseOrderRecord
       .from('orders')
       .select('*')
       .order('created_at', { ascending: true });
+    if (error && isMissingTableError(error)) {
+      return { data: [], error: null };
+    }
     return { data: (data as SupabaseOrderRecord[]) || null, error };
   } catch (err) {
     console.warn('Error fetching Supabase orders:', err);
@@ -581,11 +602,8 @@ export function buildCleanProductPayload(productData: ProductSaveInput) {
     (Array.isArray(productData.images) ? productData.images[0] : '') ||
     ''
   ).trim();
-  const idStr = productData.id || ('prod-' + Date.now());
-  const slugStr = productData.slug || nameStr.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || idStr;
 
   return {
-    id: idStr,
     name: nameStr,
     description: descStr,
     price: isNaN(priceNum) ? 0 : priceNum,
@@ -593,8 +611,6 @@ export function buildCleanProductPayload(productData: ProductSaveInput) {
     image_url: imgStr,
     stock: isNaN(stockNum) ? 0 : stockNum,
     is_active: productData.is_active !== undefined ? Boolean(productData.is_active) : true,
-    slug: slugStr,
-    brand: productData.brand || 'AjmanTech',
   };
 }
 
@@ -609,8 +625,9 @@ const triggerAlert = (msg: string) => {
 };
 
 /**
- * Inserts a product into Supabase 'products' table using clean standard column names.
- * Features automatic schema mismatch auditing, console field logging, and graceful user alert.
+ * Inserts a product into Supabase 'products' table using strictly clean standard column names.
+ * Omits 'id' so Postgres automatically generates a valid UUID.
+ * If a specific optional column (e.g. 'is_active') does not exist in the table, strips only that column and retries once.
  */
 export async function insertSupabaseProduct(
   productData: ProductSaveInput
@@ -620,58 +637,29 @@ export async function insertSupabaseProduct(
     return { success: true };
   }
 
-  const clean = buildCleanProductPayload(productData);
-
-  // 1. Primary Clean Insert with strictly standard column names
-  const primaryCleanPayload: Record<string, any> = {
-    id: clean.id,
-    name: clean.name,
-    description: clean.description,
-    price: clean.price,
-    category: clean.category,
-    image_url: clean.image_url,
-    stock: clean.stock,
-    is_active: clean.is_active,
-    slug: clean.slug,
-    brand: clean.brand,
-  };
+  const primaryCleanPayload: Record<string, any> = buildCleanProductPayload(productData);
 
   let { data, error } = await supabase
     .from('products')
     .insert([primaryCleanPayload])
     .select();
 
-  // 2. Audit schema mismatch
   if (error) {
     const missingField = extractMissingColumnFromError(error);
     console.error(`[Supabase Product Schema Audit] Column mismatch detected on field '${missingField || 'unknown'}'. Error:`, error.message);
 
-    // Build adaptive payload supplying legacy column aliases for seamless compatibility
-    const adaptivePayload: Record<string, any> = {
-      ...primaryCleanPayload,
-      category_name: clean.category,
-      image: clean.image_url,
-      short_description: clean.description.slice(0, 160) || clean.name,
-      full_description: clean.description || clean.name,
-      gallery: Array.isArray(productData.gallery) ? productData.gallery : [clean.image_url],
-      specifications: productData.specifications || {},
-      tags: productData.tags || ['lighting'],
-      voltage: productData.voltage || '220V-240V',
-      warranty: productData.warranty || '1 Year',
-    };
+    if (missingField && error.message.toLowerCase().includes('does not exist') && missingField in primaryCleanPayload) {
+      const retryPayload = { ...primaryCleanPayload };
+      delete retryPayload[missingField];
 
-    // If error was about a specific clean column not existing in table, omit that specific field
-    if (missingField && error.message.includes('does not exist')) {
-      delete adaptivePayload[missingField];
+      const retryResult = await supabase
+        .from('products')
+        .insert([retryPayload])
+        .select();
+
+      data = retryResult.data;
+      error = retryResult.error;
     }
-
-    const retryResult = await supabase
-      .from('products')
-      .insert([adaptivePayload])
-      .select();
-
-    data = retryResult.data;
-    error = retryResult.error;
 
     if (error) {
       const finalMissingField = extractMissingColumnFromError(error) || missingField;
@@ -686,8 +674,8 @@ export async function insertSupabaseProduct(
 }
 
 /**
- * Updates a product in Supabase 'products' table using clean standard column names.
- * Audits columns, logs exact missing field on failure, and avoids column schema breakage.
+ * Updates a product in Supabase 'products' table using strictly clean standard column names.
+ * Guards against non-UUID local fallback IDs (e.g. 'prod-01') to prevent Postgres 22P02 errors.
  */
 export async function updateSupabaseProduct(
   productId: string,
@@ -698,20 +686,12 @@ export async function updateSupabaseProduct(
     return { success: true };
   }
 
-  const clean = buildCleanProductPayload({ ...productData, id: productId });
+  if (!isValidUuid(productId)) {
+    console.warn(`[Supabase Update Audit] Skipping remote update for non-UUID local product ID '${productId}'.`);
+    return { success: true };
+  }
 
-  // 1. Primary Clean Update with strictly standard column names
-  const primaryCleanUpdate: Record<string, any> = {
-    name: clean.name,
-    description: clean.description,
-    price: clean.price,
-    category: clean.category,
-    image_url: clean.image_url,
-    stock: clean.stock,
-    is_active: clean.is_active,
-    slug: clean.slug,
-    brand: clean.brand,
-  };
+  const primaryCleanUpdate: Record<string, any> = buildCleanProductPayload(productData);
 
   let { data, error } = await supabase
     .from('products')
@@ -719,33 +699,23 @@ export async function updateSupabaseProduct(
     .eq('id', productId)
     .select();
 
-  // 2. Audit schema mismatch on update
   if (error) {
     const missingField = extractMissingColumnFromError(error);
     console.error(`[Supabase Product Schema Audit] Update column mismatch detected on field '${missingField || 'unknown'}'. Error:`, error.message);
 
-    // Adaptive update payload with both clean and legacy columns
-    const adaptiveUpdate: Record<string, any> = {
-      ...primaryCleanUpdate,
-      category_name: clean.category,
-      image: clean.image_url,
-      short_description: clean.description.slice(0, 160) || clean.name,
-      full_description: clean.description || clean.name,
-      gallery: Array.isArray(productData.gallery) ? productData.gallery : [clean.image_url],
-    };
+    if (missingField && error.message.toLowerCase().includes('does not exist') && missingField in primaryCleanUpdate) {
+      const retryPayload = { ...primaryCleanUpdate };
+      delete retryPayload[missingField];
 
-    if (missingField && error.message.includes('does not exist')) {
-      delete adaptiveUpdate[missingField];
+      const retryResult = await supabase
+        .from('products')
+        .update(retryPayload)
+        .eq('id', productId)
+        .select();
+
+      data = retryResult.data;
+      error = retryResult.error;
     }
-
-    const retryResult = await supabase
-      .from('products')
-      .update(adaptiveUpdate)
-      .eq('id', productId)
-      .select();
-
-    data = retryResult.data;
-    error = retryResult.error;
 
     if (error) {
       const finalMissingField = extractMissingColumnFromError(error) || missingField;

@@ -1713,37 +1713,37 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   // Product CRUD
   const addProduct = async (productData: Omit<Product, 'id'>) => {
-    const newProduct: Product = {
-      ...productData,
-      id: 'prod-' + Date.now(),
-    };
+    let resolvedId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : 'prod-' + Date.now();
 
-    setProducts((prev) => [newProduct, ...prev]);
-
-    // Direct Supabase sync using audited clean column names
+    // Direct Supabase sync using audited clean column names (Postgres generates UUID)
     if (isSupabaseConfigured() && supabase) {
       try {
-        await insertSupabaseProduct({
-          id: newProduct.id,
-          name: newProduct.name,
-          slug: newProduct.slug || newProduct.id,
-          brand: newProduct.brand || 'AjmanTech',
-          category: newProduct.category,
-          price: newProduct.price,
-          stock: newProduct.stock,
-          image_url: newProduct.images[0] || '',
-          description: newProduct.description || newProduct.shortDescription,
+        const res = await insertSupabaseProduct({
+          name: productData.name,
+          category: productData.category,
+          price: productData.price,
+          stock: productData.stock,
+          image_url: productData.images[0] || '',
+          description: productData.description || productData.shortDescription,
           is_active: true,
-          gallery: newProduct.images || [],
-          specifications: newProduct.specifications || {},
-          tags: newProduct.tags || [],
-          voltage: newProduct.specifications?.voltage || '220V-240V',
-          warranty: newProduct.specifications?.warranty || '1 Year',
         });
+        if (res.success && Array.isArray(res.data) && res.data[0]?.id) {
+          resolvedId = String(res.data[0].id);
+        }
       } catch (err: any) {
         console.error('[StoreContext addProduct Error]:', err);
       }
     }
+
+    const newProduct: Product = {
+      ...productData,
+      id: resolvedId,
+    };
+
+    setProducts((prev) => [newProduct, ...prev]);
 
     addActivityLog({
       actionType: 'product',
@@ -1762,19 +1762,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       try {
         await updateSupabaseProduct(updated.id, {
           name: updated.name,
-          slug: updated.slug || updated.id,
-          brand: updated.brand,
           category: updated.category,
           price: updated.price,
           stock: updated.stock,
           image_url: updated.images[0] || '',
           description: updated.description || updated.shortDescription,
           is_active: true,
-          gallery: updated.images,
-          specifications: updated.specifications,
-          tags: updated.tags,
-          voltage: updated.specifications?.voltage || '220V-240V',
-          warranty: updated.specifications?.warranty || '1 Year',
         });
       } catch (err: any) {
         console.error('[StoreContext updateProduct Error]:', err);
