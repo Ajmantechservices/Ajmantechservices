@@ -9,6 +9,9 @@ import {
 import {
   isSupabaseConfigured,
   deleteSupabaseProduct,
+  checkAdminAuthSession,
+  signInAdminWithSupabase,
+  signOutAdminWithSupabase,
 } from '../../../src/lib/supabase';
 
 interface AdminProductRecord {
@@ -47,6 +50,13 @@ const EMPTY_FORM: ProductFormState = {
 };
 
 export default function AdminProductsPage() {
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authorizedAdmin, setAuthorizedAdmin] = useState<{ email: string } | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const [products, setProducts] = useState<AdminProductRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,8 +68,51 @@ export default function AdminProductsPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchProducts();
+    let isMounted = true;
+    const verifySession = async () => {
+      setAuthChecking(true);
+      const res = await checkAdminAuthSession();
+      if (!isMounted) return;
+      if (res.isAdmin && res.email) {
+        setAuthorizedAdmin({ email: res.email });
+        await fetchProducts();
+      } else {
+        setAuthorizedAdmin(null);
+        setLoading(false);
+      }
+      setAuthChecking(false);
+    };
+    verifySession();
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const handleAdminSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await signInAdminWithSupabase(authEmail.trim(), authPassword);
+      if (res.success && res.user) {
+        setAuthorizedAdmin({ email: res.user.email || authEmail.trim() });
+        setAuthPassword('');
+        await fetchProducts();
+      } else {
+        setAuthError(res.message || 'Authentication failed.');
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Unexpected authentication error.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAdminSignOut = async () => {
+    await signOutAdminWithSupabase();
+    setAuthorizedAdmin(null);
+    setProducts([]);
+  };
 
   async function fetchProducts() {
     setLoading(true);
@@ -100,6 +153,14 @@ export default function AdminProductsPage() {
   // Save or Update Product
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!authorizedAdmin || !isSupabaseConfigured()) {
+      setStatusFeedback({
+        type: 'error',
+        message: 'Active verified Supabase administrator session required.',
+      });
+      return;
+    }
+
     setSaving(true);
     setStatusFeedback(null);
 
@@ -114,37 +175,6 @@ export default function AdminProductsPage() {
     };
 
     try {
-      if (!isSupabaseConfigured()) {
-        // Local preview mode fallback if Supabase keys are not configured
-        if (form.id) {
-          setProducts((prev) =>
-            prev.map((p) =>
-              p.id === form.id ? { ...p, ...productPayload } : p
-            )
-          );
-          setStatusFeedback({
-            type: 'success',
-            message: 'Product updated locally (configure Supabase env keys to persist remotely).',
-          });
-        } else {
-          const localItem: AdminProductRecord = {
-            id:
-              typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-                ? crypto.randomUUID()
-                : 'prod-' + Date.now(),
-            ...productPayload,
-            created_at: new Date().toISOString(),
-          };
-          setProducts((prev) => [localItem, ...prev]);
-          setStatusFeedback({
-            type: 'success',
-            message: 'Product added locally (configure Supabase env keys to persist remotely).',
-          });
-        }
-        setForm(EMPTY_FORM);
-        return;
-      }
-
       if (form.id) {
         // Update existing product using schema-audited handler
         const res = await updateSupabaseProduct(form.id, productPayload);
@@ -215,17 +245,14 @@ export default function AdminProductsPage() {
 
   // Delete product action (non-blocking inline confirm)
   const handleDelete = async (id: string) => {
+    if (!authorizedAdmin || !isSupabaseConfigured()) return;
+
     if (confirmDeleteId !== id) {
       setConfirmDeleteId(id);
       return;
     }
 
     setConfirmDeleteId(null);
-    if (!isSupabaseConfigured()) {
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-      setStatusFeedback({ type: 'info', message: 'Product removed locally.' });
-      return;
-    }
 
     const { error } = await deleteSupabaseProduct(id);
     if (error) {
@@ -243,6 +270,82 @@ export default function AdminProductsPage() {
     }
   };
 
+  if (authChecking) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-slate-600">
+        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-sm">Verifying Supabase administrator session...</p>
+      </div>
+    );
+  }
+
+  if (!authorizedAdmin) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-6 bg-slate-50">
+        <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">
+            Admin Authentication Required
+          </h1>
+          <p className="text-sm text-slate-600 mb-6">
+            Sign in with your verified Supabase administrator credentials to manage products.
+          </p>
+
+          {!isSupabaseConfigured() && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+              Supabase environment variables are not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to authenticate.
+            </div>
+          )}
+
+          {authError && (
+            <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleAdminSignIn} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Administrator Email
+              </label>
+              <input
+                type="email"
+                required
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="admin@example.com"
+                autoComplete="email"
+                className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={authLoading || !isSupabaseConfigured()}
+              className="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors cursor-pointer"
+            >
+              {authLoading ? 'Signing In...' : 'Sign In as Administrator'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto text-slate-900">
       <header className="mb-8 border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -251,15 +354,24 @@ export default function AdminProductsPage() {
             AjmanTech Admin Control Center
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Manage store inventory, update prices, and publish live catalog items.
+            Signed in as <span className="font-mono font-medium">{authorizedAdmin.email}</span> • Manage store inventory and publish live catalog items.
           </p>
         </div>
-        <a
-          href="/admin"
-          className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
-        >
-          ← Full Admin Dashboard
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="/admin"
+            className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            ← Full Admin Dashboard
+          </a>
+          <button
+            type="button"
+            onClick={handleAdminSignOut}
+            className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer"
+          >
+            Sign Out
+          </button>
+        </div>
       </header>
 
       {statusFeedback && (

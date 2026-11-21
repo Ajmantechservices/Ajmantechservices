@@ -182,17 +182,9 @@ export async function signInAdminWithSupabase(
   }
 
   if (!supabase || !isSupabaseConfigured()) {
-    // Graceful fallback for local development strictly for designated admin
-    if (pass === 'Ayomide0148' || pass === 'admin123' || pass === 'ajmantech') {
-      return {
-        success: true,
-        message: 'Admin authentication successful (Designated Site Owner Mode)',
-        role: 'admin',
-      };
-    }
     return {
       success: false,
-      message: 'Supabase is not configured yet. Set VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY, or use Ayomide0148.',
+      message: 'Supabase authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to sign in.',
     };
   }
 
@@ -424,7 +416,7 @@ export async function deleteSupabaseProducts(productIds: string[]) {
 }
 
 /**
- * Check current Supabase auth session & verify if user has admin role
+ * Check current Supabase auth session & verify with Supabase Auth server (getUser) + profiles.role
  */
 export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user: User | null; email?: string }> {
   if (!supabase || !isSupabaseConfigured()) {
@@ -437,7 +429,15 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
       return { isAdmin: false, user: null };
     }
 
-    const sessionEmail = session.user.email?.toLowerCase().trim();
+    // Verify JWT directly with Supabase Auth server (prevents stale/forged local session)
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    const verifiedUser = userData?.user;
+    if (userErr || !verifiedUser) {
+      await supabase.auth.signOut();
+      return { isAdmin: false, user: null };
+    }
+
+    const sessionEmail = verifiedUser.email?.toLowerCase().trim();
     if (sessionEmail !== TARGET_ADMIN_EMAIL.toLowerCase()) {
       await supabase.auth.signOut();
       return { isAdmin: false, user: null };
@@ -446,10 +446,10 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
     const { data: profile } = await supabase
       .from('profiles')
       .select('role, email')
-      .eq('id', session.user.id)
+      .eq('id', verifiedUser.id)
       .maybeSingle();
 
-    const role = profile?.role || session.user.user_metadata?.role;
+    const role = profile?.role || verifiedUser.user_metadata?.role;
     const isAdmin = role === 'admin';
 
     if (!isAdmin) {
@@ -459,8 +459,8 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
 
     return {
       isAdmin: true,
-      user: session.user,
-      email: profile?.email || session.user.email,
+      user: verifiedUser,
+      email: profile?.email || verifiedUser.email,
     };
   } catch (e) {
     console.warn('Session check error:', e);

@@ -8,15 +8,12 @@ import {
   Terminal,
   Copy,
   Check,
-  ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
-import { supabase, getSupabaseConfigStatus, isSupabaseConfigured } from '../lib/supabase';
-
-const TARGET_ADMIN_EMAIL = 'joshuaajayi0148@gmail.com';
-const TARGET_ADMIN_PASSWORD = 'Ayomide0148';
-const FALLBACK_ADMIN_EMAIL = 'support@ajmantechservices.com';
-const FALLBACK_ADMIN_PASSWORD = 'YourSecretAdminPassword123';
+import {
+  TARGET_ADMIN_EMAIL,
+  getSupabaseConfigStatus,
+  signUpAdminWithSupabase,
+} from '../lib/supabase';
 
 const SQL_TRIGGER_CODE = `-- 1. Create a function to assign 'admin' role automatically to your email
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -53,19 +50,25 @@ TO authenticated
 USING (true);`;
 
 export const AdminLoginView: React.FC = () => {
-  const { adminLogin, navigateTo, showToast, isAdmin: storeIsAdmin, currentUser, currentView } = useStore();
+  const {
+    adminLogin,
+    navigateTo,
+    showToast,
+    isAdmin: storeIsAdmin,
+    isAuthChecking,
+    currentUser,
+    currentView,
+  } = useStore();
   const postLoginView = currentView === 'admin-products' ? 'admin-products' : 'admin-dashboard';
 
   // Auth Mode: 'signin' | 'signup'
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
-  // Form Fields
-  const [fullName, setFullName] = useState<string>('Engr. Abiodun Ajayi');
-  const [email, setEmail] = useState<string>('support@digitalaccessplace.com');
-  const [password, setPassword] = useState<string>('••••••••••••');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [actualPassword, setActualPassword] = useState<string>(TARGET_ADMIN_PASSWORD);
-  const [actualConfirmPassword, setActualConfirmPassword] = useState<string>(TARGET_ADMIN_PASSWORD);
+  // Form Fields (never pre-fill hardcoded passwords)
+  const [fullName, setFullName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [actualPassword, setActualPassword] = useState<string>('');
+  const [actualConfirmPassword, setActualConfirmPassword] = useState<string>('');
 
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
@@ -79,112 +82,46 @@ export const AdminLoginView: React.FC = () => {
   const [showSeedModal, setShowSeedModal] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [serviceRoleKeyInput, setServiceRoleKeyInput] = useState('');
+  const [seedPasswordInput, setSeedPasswordInput] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ success: boolean; message: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
 
   const supabaseStatus = getSupabaseConfigStatus();
 
-  // Set default email on mount
+  // Navigate to admin view once StoreContext verifies an active Supabase admin session
   useEffect(() => {
-    setEmail(TARGET_ADMIN_EMAIL);
-    setActualPassword(TARGET_ADMIN_PASSWORD);
-    setActualConfirmPassword(TARGET_ADMIN_PASSWORD);
-  }, []);
-
-  // Check if session is already active
-  useEffect(() => {
-    let isMounted = true;
-
-    if (storeIsAdmin && currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()) {
+    if (
+      !isAuthChecking &&
+      storeIsAdmin &&
+      currentUser?.role === 'admin' &&
+      currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()
+    ) {
       navigateTo(postLoginView);
-      return;
     }
+  }, [isAuthChecking, storeIsAdmin, currentUser, navigateTo, postLoginView]);
 
-    const checkSupabaseSession = async () => {
-      if (isSupabaseConfigured() && supabase) {
-        try {
-          const { data } = await supabase.auth.getSession();
-          if (data?.session?.user && isMounted) {
-            const sessionEmail = data.session.user.email?.toLowerCase().trim();
-            if (sessionEmail === TARGET_ADMIN_EMAIL.toLowerCase()) {
-              const loginRes = await adminLogin(data.session.user.email!, TARGET_ADMIN_PASSWORD);
-              if (loginRes.success) {
-                showToast('Welcome back, Site Owner!', 'success');
-                navigateTo(postLoginView);
-              }
-            }
-          }
-        } catch (sessErr) {
-          console.warn('Session restore notice:', sessErr);
-        }
-      }
-    };
-
-    checkSupabaseSession();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [storeIsAdmin, currentUser, navigateTo, adminLogin, showToast]);
-
-  // Handle Sign In
+  // Handle Sign In strictly through StoreContext -> signInAdminWithSupabase
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    const inputEmail = email.trim() || TARGET_ADMIN_EMAIL;
-    const pass = actualPassword || TARGET_ADMIN_PASSWORD;
+    const inputEmail = email.trim();
+    if (!inputEmail || !actualPassword) {
+      const msg = 'Please enter both your administrator email and password.';
+      setErrorMessage(msg);
+      showToast(msg, 'error');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      let isSupabaseSuccess = false;
-      let authenticatedUserId: string | null = null;
-
-      // 1. Try Supabase Auth
-      if (isSupabaseConfigured() && supabase) {
-        try {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: inputEmail,
-            password: pass,
-          });
-
-          if (!error && data?.user) {
-            isSupabaseSuccess = true;
-            authenticatedUserId = data.user.id;
-          }
-        } catch (authErr) {
-          console.warn('Supabase signInWithPassword notice:', authErr);
-        }
-      }
-
-      // If authenticated via Supabase, ensure profiles table role is admin
-      if (isSupabaseSuccess && authenticatedUserId && supabase) {
-        try {
-          await supabase.from('profiles').upsert({
-            id: authenticatedUserId,
-            email: TARGET_ADMIN_EMAIL,
-            full_name: 'Engr. Abiodun Ajayi',
-            role: 'admin',
-          });
-        } catch {}
-      }
-
-      // 2. Complete store session & navigate straight to Product & Order Manager
-      const loginRes = await adminLogin(inputEmail, pass);
+      const loginRes = await adminLogin(inputEmail, actualPassword);
       if (loginRes.success) {
-        showToast('Signed in successfully! Opening Product & Order Manager...', 'success');
         navigateTo(postLoginView);
       } else {
-        // Fallback master bypass
-        const masterRes = await adminLogin(TARGET_ADMIN_EMAIL, TARGET_ADMIN_PASSWORD);
-        if (masterRes.success) {
-          showToast('Welcome back, Engr. Abiodun Ajayi!', 'success');
-          navigateTo(postLoginView);
-        } else {
-          setErrorMessage(loginRes.message || 'Invalid credentials.');
-          showToast(loginRes.message || 'Invalid credentials.', 'error');
-        }
+        setErrorMessage(loginRes.message || 'Invalid administrator credentials.');
+        showToast(loginRes.message || 'Invalid administrator credentials.', 'error');
       }
     } catch (err: any) {
       const msg = err?.message || 'An unexpected authentication error occurred.';
@@ -195,7 +132,7 @@ export const AdminLoginView: React.FC = () => {
     }
   };
 
-  // Handle Sign Up
+  // Handle Sign Up strictly through Supabase helper (enforces owner-only restriction)
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -226,46 +163,13 @@ export const AdminLoginView: React.FC = () => {
 
     setIsLoading(true);
     try {
-      if (isSupabaseConfigured() && supabase) {
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: actualPassword,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-              role: 'admin',
-            },
-          },
-        });
-
-        if (error) {
-          setErrorMessage(error.message);
-          showToast(error.message, 'error');
-          setIsLoading(false);
-          return;
-        }
-
-        if (data?.session && data.user) {
-          try {
-            await supabase.from('profiles').upsert({
-              id: data.user.id,
-              email: email.trim(),
-              full_name: fullName.trim(),
-              role: 'admin',
-            });
-          } catch {}
-
-          await adminLogin(email.trim(), actualPassword);
-          showToast('Admin account created! Welcome to your dashboard.', 'success');
-          navigateTo('admin-dashboard');
-        } else {
-          showToast('Account registered! Check your inbox to confirm or sign in.', 'success');
-          setAuthMode('signin');
-        }
+      const res = await signUpAdminWithSupabase(fullName.trim(), email.trim(), actualPassword);
+      if (res.success) {
+        showToast(res.message || 'Admin account created!', 'success');
+        setAuthMode('signin');
       } else {
-        await adminLogin(email.trim(), actualPassword);
-        showToast('Admin account initialized! Welcome.', 'success');
-        navigateTo('admin-dashboard');
+        setErrorMessage(res.message);
+        showToast(res.message, 'error');
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Registration failed.');
@@ -275,20 +179,17 @@ export const AdminLoginView: React.FC = () => {
     }
   };
 
-  // Quick helper to fill target admin credentials
-  const handlePreFillOwner = () => {
-    setEmail(TARGET_ADMIN_EMAIL);
-    setActualPassword(TARGET_ADMIN_PASSWORD);
-    setActualConfirmPassword(TARGET_ADMIN_PASSWORD);
-    setPassword(TARGET_ADMIN_PASSWORD);
-    setConfirmPassword(TARGET_ADMIN_PASSWORD);
-    setErrorMessage(null);
-    showToast('Loaded site owner credentials: ' + TARGET_ADMIN_EMAIL, 'info');
-  };
-
   const handleExecuteSeed = async () => {
-    setIsSeeding(true);
     setSeedResult(null);
+    if (!seedPasswordInput || seedPasswordInput.length < 6) {
+      setSeedResult({
+        success: false,
+        message: 'Please enter an admin password (at least 6 characters) to seed the account.',
+      });
+      return;
+    }
+
+    setIsSeeding(true);
     try {
       const response = await fetch('/api/seed-admin', {
         method: 'POST',
@@ -298,7 +199,7 @@ export const AdminLoginView: React.FC = () => {
         },
         body: JSON.stringify({
           email: TARGET_ADMIN_EMAIL,
-          password: TARGET_ADMIN_PASSWORD,
+          password: seedPasswordInput,
           fullName: 'Abiodun Ajayi',
           serviceRoleKey: serviceRoleKeyInput.trim() || undefined,
         }),
@@ -308,18 +209,12 @@ export const AdminLoginView: React.FC = () => {
       if (data.success) {
         setSeedResult({
           success: true,
-          message: data.message || `Admin account ${TARGET_ADMIN_EMAIL} initialized successfully!`,
+          message:
+            data.message ||
+            `Admin account ${TARGET_ADMIN_EMAIL} initialized successfully. Close this dialog and sign in with your password.`,
         });
-        showToast('Admin account seeded in Supabase Auth!', 'success');
-        handlePreFillOwner();
-        setTimeout(async () => {
-          setIsLoading(true);
-          const loginRes = await adminLogin(TARGET_ADMIN_EMAIL, TARGET_ADMIN_PASSWORD);
-          setIsLoading(false);
-          if (loginRes.success) {
-            navigateTo('admin-dashboard');
-          }
-        }, 1200);
+        setSeedPasswordInput('');
+        showToast('Admin account seeded in Supabase Auth! You can now sign in.', 'success');
       } else {
         setSeedResult({
           success: false,
@@ -345,22 +240,40 @@ export const AdminLoginView: React.FC = () => {
     setTimeout(() => setCopiedSql(false), 2500);
   };
 
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 bg-white">
+        <div className="w-8 h-8 border-2 border-[#16a34a] border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-sm text-slate-500">Verifying administrator session...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[75vh] flex flex-col items-center justify-center py-12 sm:py-20 px-4 bg-white">
-      {/* Title & Subtitle Matching Screenshot */}
+      {/* Title & Subtitle */}
       <div className="text-center mb-8 max-w-md">
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
-          {authMode === 'signin' ? 'Welcome Back' : 'Create Admin Account'}
+          {authMode === 'signin' ? 'Admin Sign In' : 'Admin Registration'}
         </h1>
         <p className="text-sm sm:text-base text-slate-500 mt-2 font-light">
           {authMode === 'signin'
-            ? 'Sign in to continue your learning journey.'
-            : 'Register to access your technical services and catalog.'}
+            ? 'Authenticate with your Supabase administrator account to manage AjmanTech.'
+            : 'Public registration is restricted to the verified site owner.'}
         </p>
       </div>
 
-      {/* Elegant Centered Card */}
+      {/* Centered Card */}
       <div className="w-full max-w-[440px] bg-white border border-slate-200/90 rounded-2xl p-7 sm:p-9 shadow-sm">
+        {!supabaseStatus.isConfigured && (
+          <div className="mb-5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>
+              Supabase environment variables are not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to authenticate.
+            </span>
+          </div>
+        )}
+
         {/* Error Alert */}
         {errorMessage && (
           <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium text-center flex items-center justify-center gap-2">
@@ -381,7 +294,8 @@ export const AdminLoginView: React.FC = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="support@digitalsuccessplace.com"
+                placeholder="admin@example.com"
+                autoComplete="email"
                 className="w-full bg-[#EAF2FE] border border-blue-100/70 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#16a34a] focus:bg-white focus:border-transparent transition-all"
               />
             </div>
@@ -391,24 +305,15 @@ export const AdminLoginView: React.FC = () => {
                 <label className="block text-xs font-medium text-slate-700">
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={handlePreFillOwner}
-                  className="text-[11px] text-[#16a34a] hover:underline cursor-pointer font-medium"
-                >
-                  Fill master credentials
-                </button>
               </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={actualPassword}
-                  onChange={(e) => {
-                    setActualPassword(e.target.value);
-                    setPassword(e.target.value);
-                  }}
-                  placeholder="••••••••••••"
+                  onChange={(e) => setActualPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
                   className="w-full bg-[#EAF2FE] border border-blue-100/70 rounded-xl px-4 py-3 pr-10 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#16a34a] focus:bg-white focus:border-transparent transition-all"
                 />
                 <button
@@ -422,21 +327,18 @@ export const AdminLoginView: React.FC = () => {
               </div>
             </div>
 
-            {/* Vibrant Green Sign In Button matching reference */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !supabaseStatus.isConfigured}
               className="w-full py-3 px-4 rounded-xl bg-[#16a34a] hover:bg-[#15803d] active:bg-[#166534] text-white font-bold text-sm shadow-sm transition-all cursor-pointer disabled:opacity-50 mt-1"
             >
               {isLoading ? 'Signing In...' : 'Sign In'}
             </button>
 
-            {/* Divider */}
             <div className="border-t border-slate-100 my-6" />
 
-            {/* Bottom Toggle Link */}
             <div className="text-center text-xs text-slate-500">
-              Don't have an account?{' '}
+              Need setup help?{' '}
               <button
                 type="button"
                 onClick={() => {
@@ -445,7 +347,7 @@ export const AdminLoginView: React.FC = () => {
                 }}
                 className="text-[#16a34a] hover:underline font-semibold cursor-pointer"
               >
-                Sign up
+                Admin Registration Info
               </button>
             </div>
           </form>
@@ -461,7 +363,7 @@ export const AdminLoginView: React.FC = () => {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Engr. Abiodun Ajayi"
+                placeholder="Enter your full name"
                 className="w-full bg-[#EAF2FE] border border-blue-100/70 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#16a34a] focus:bg-white focus:border-transparent transition-all"
               />
             </div>
@@ -475,7 +377,7 @@ export const AdminLoginView: React.FC = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@ajmantechservices.com"
+                placeholder="admin@example.com"
                 className="w-full bg-[#EAF2FE] border border-blue-100/70 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#16a34a] focus:bg-white focus:border-transparent transition-all"
               />
             </div>
@@ -526,19 +428,16 @@ export const AdminLoginView: React.FC = () => {
               </div>
             </div>
 
-            {/* Vibrant Green Sign Up Button */}
             <button
               type="submit"
               disabled={isLoading}
               className="w-full py-3 px-4 rounded-xl bg-[#16a34a] hover:bg-[#15803d] active:bg-[#166534] text-white font-bold text-sm shadow-sm transition-all cursor-pointer disabled:opacity-50 mt-1"
             >
-              {isLoading ? 'Creating Account...' : 'Sign Up'}
+              {isLoading ? 'Submitting...' : 'Sign Up'}
             </button>
 
-            {/* Divider */}
             <div className="border-t border-slate-100 my-6" />
 
-            {/* Bottom Toggle Link */}
             <div className="text-center text-xs text-slate-500">
               Already have an account?{' '}
               <button
@@ -556,7 +455,7 @@ export const AdminLoginView: React.FC = () => {
         )}
       </div>
 
-      {/* Discreet Development / Auto-Seed Controls */}
+      {/* Discreet Setup Utilities */}
       <div className="mt-8 flex items-center justify-center gap-4 text-xs text-slate-400">
         <button
           type="button"
@@ -574,14 +473,6 @@ export const AdminLoginView: React.FC = () => {
         >
           <Terminal className="w-3.5 h-3.5" />
           <span>SQL Trigger Script</span>
-        </button>
-        <span>•</span>
-        <button
-          type="button"
-          onClick={handlePreFillOwner}
-          className="hover:text-[#16a34a] transition-colors cursor-pointer"
-        >
-          Pre-fill Credentials
         </button>
       </div>
 
@@ -609,6 +500,19 @@ export const AdminLoginView: React.FC = () => {
             </p>
 
             <div className="space-y-1.5 pt-2">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                New Admin Password
+              </label>
+              <input
+                type="password"
+                value={seedPasswordInput}
+                onChange={(e) => setSeedPasswordInput(e.target.value)}
+                placeholder="Enter password (min 6 characters)"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 Service Role Key (Optional if set in server env)
               </label>
@@ -716,3 +620,4 @@ export const AdminLoginView: React.FC = () => {
     </div>
   );
 };
+

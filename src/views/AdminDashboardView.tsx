@@ -248,32 +248,19 @@ export const AdminDashboardView: React.FC = () => {
 
 
   // -------------------------------------------------------------
-  // Verify Admin Session
+  // Verify Admin Session strictly via Supabase Auth + profiles.role
   // -------------------------------------------------------------
   useEffect(() => {
     let isMounted = true;
 
     const verifyAdminAuth = async () => {
-      const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
-      const userEmail = currentUser?.email?.toLowerCase().trim();
+      const sessionCheck = await checkAdminAuthSession();
+      if (!isMounted) return;
 
-      const isAllowedAdminEmail =
-        userEmail === normalizedTarget ||
-        userEmail === 'support@ajmantechservices.com' ||
-        userEmail === 'support@digitalsuccessplace.com' ||
-        userEmail?.includes('joshua') ||
-        userEmail?.includes('ajayi');
-
-      if (!isAdmin || !isAllowedAdminEmail) {
-        if (isSupabaseConfigured() && supabase) {
-          try {
-            await supabase.auth.signOut();
-          } catch {}
-        }
+      if (!sessionCheck.isAdmin || !isAdmin) {
         await adminLogout();
-        showToast('Please sign in with administrator credentials.', 'info');
+        showToast('Please sign in with verified administrator credentials.', 'info');
         navigateTo('admin-login');
-        return;
       }
     };
 
@@ -282,7 +269,7 @@ export const AdminDashboardView: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin, navigateTo, showToast, currentUser, adminLogout]);
+  }, [isAdmin, navigateTo, showToast, adminLogout]);
 
   // Load counts
   const loadSupabaseTableCounts = async () => {

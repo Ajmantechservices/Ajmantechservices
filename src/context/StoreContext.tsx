@@ -34,6 +34,7 @@ import {
   signInAdminWithSupabase,
   signUpAdminWithSupabase,
   signOutAdminWithSupabase,
+  checkAdminAuthSession,
   fetchProductGallery,
   addImagesToProductGallery,
   removeProductGalleryImage,
@@ -154,6 +155,7 @@ interface StoreContextType {
   updateUserProfile: (updatedUser: Partial<UserAccount>) => void;
   isAdmin: boolean;
   setIsAdmin: (isAdmin: boolean) => void;
+  isAuthChecking: boolean;
 
   // Product Admin Operations
   addProduct: (product: Omit<Product, 'id'>) => Promise<Product> | Product;
@@ -334,11 +336,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return loaded;
   });
 
-  // User State: Signed out by default until an actual user creates an account or logs in
+  // User State: Signed out by default until an actual user creates an account or logs in.
+  // Never trust localStorage for admin elevation; admin state is always verified via Supabase Auth.
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     const storedUser = loadStored<UserAccount | null>(STORAGE_KEYS.USER, null);
-    // Purge any legacy mock demo user or old test account from localStorage
-    if (storedUser && (storedUser.id === 'usr-demo-01' || storedUser.email === 'admin@ajmantech.ng')) {
+    if (
+      storedUser &&
+      (storedUser.id === 'usr-demo-01' ||
+        storedUser.email === 'admin@ajmantech.ng' ||
+        storedUser.role === 'admin')
+    ) {
       if (typeof window !== 'undefined') {
         try {
           localStorage.removeItem(STORAGE_KEYS.USER);
@@ -350,15 +357,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return storedUser;
   });
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    const storedAdmin = loadStored<boolean>(STORAGE_KEYS.IS_ADMIN, false);
-    const storedUser = loadStored<UserAccount | null>(STORAGE_KEYS.USER, null);
-    // Strictly require target admin email and admin role
-    if (!storedUser || storedUser.email?.toLowerCase().trim() !== TARGET_ADMIN_EMAIL.toLowerCase() || storedUser.role !== 'admin') {
-      return false;
-    }
-    return storedAdmin;
-  });
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
   // Registered Customer Accounts database in localStorage
   const [registeredUsers, setRegisteredUsers] = useState<Array<{
@@ -668,7 +668,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     try {
-      if (currentUser) {
+      // Only persist non-admin customer profiles in localStorage; admin session lives in Supabase Auth
+      if (currentUser && currentUser.role !== 'admin') {
         localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
       } else {
         localStorage.removeItem(STORAGE_KEYS.USER);
@@ -678,13 +679,68 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     try {
-      if (isAdmin && currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()) {
-        localStorage.setItem(STORAGE_KEYS.IS_ADMIN, JSON.stringify(true));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
-      }
+      localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
     } catch (e) { console.error(e); }
-  }, [isAdmin, currentUser]);
+  }, [isAdmin]);
+
+  // Verify live Supabase Admin Auth session on mount and across auth state changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifySession = async () => {
+      try {
+        const res = await checkAdminAuthSession();
+        if (!isMounted) return;
+        if (res.isAdmin && res.user) {
+          setIsAdmin(true);
+          setCurrentUser({
+            id: res.user.id,
+            fullName: res.user.user_metadata?.full_name || 'Engr. Abiodun Ajayi',
+            email: res.email || res.user.email || TARGET_ADMIN_EMAIL,
+            phone: '+234 807 532 9182',
+            role: 'admin',
+            addresses: [],
+            createdAt: res.user.created_at
+              ? res.user.created_at.split('T')[0]
+              : new Date().toISOString().split('T')[0],
+          });
+        } else {
+          setIsAdmin(false);
+          setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+        }
+      } catch {
+        if (isMounted) {
+          setIsAdmin(false);
+          setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+        }
+      } finally {
+        if (isMounted) {
+          setIsAuthChecking(false);
+        }
+      }
+    };
+
+    verifySession();
+
+    const authSub =
+      isSupabaseConfigured() && supabase
+        ? supabase.auth.onAuthStateChange((event) => {
+            if (event === 'SIGNED_OUT') {
+              if (!isMounted) return;
+              setIsAdmin(false);
+              setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+              setIsAuthChecking(false);
+            } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+              verifySession();
+            }
+          })
+        : null;
+
+    return () => {
+      isMounted = false;
+      authSub?.data?.subscription?.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -1534,17 +1590,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
 
-    // Check if valid admin account
-    const isAllowedAdmin =
-      normalizedEmail === normalizedTarget ||
-      normalizedEmail === 'support@ajmantechservices.com' ||
-      normalizedEmail === 'support@digitalsuccessplace.com' ||
-      normalizedEmail.includes('joshua') ||
-      normalizedEmail.includes('ajayi') ||
-      normalizedEmail.includes('admin') ||
-      normalizedEmail.includes('ajman');
-
-    if (!isAllowedAdmin) {
+    if (normalizedEmail !== normalizedTarget) {
       setIsAdmin(false);
       addActivityLog({
         actionType: 'security',
@@ -1561,47 +1607,57 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
     }
 
-    let userId = 'usr-admin-owner';
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        const res = await signInAdminWithSupabase(email, pass);
-        if (res.success && res.user) {
-          userId = res.user.id;
-        }
-      } catch (err) {
-        console.warn('Supabase auth attempt:', err);
-      }
+    const res = await signInAdminWithSupabase(email, pass);
+
+    if (!res.success || !res.user) {
+      setIsAdmin(false);
+      setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+      addActivityLog({
+        actionType: 'security',
+        title: 'Admin Login Verification Failed',
+        details: `Supabase Auth rejected admin login for ${email}: ${res.message}`,
+        adminName: 'Unverified Visitor',
+        adminEmail: email,
+        severity: 'alert',
+      });
+      return {
+        success: false,
+        message: res.message || 'Invalid credentials or missing admin privileges.',
+        isPrivilegeDenied: res.isPrivilegeDenied,
+      };
     }
 
-    setIsAdmin(true);
     const adminUser: UserAccount = {
-      id: userId,
-      fullName: 'Engr. Abiodun Ajayi',
-      email: TARGET_ADMIN_EMAIL,
+      id: res.user.id,
+      fullName: res.user.user_metadata?.full_name || 'Engr. Abiodun Ajayi',
+      email: res.user.email || TARGET_ADMIN_EMAIL,
       phone: '+234 807 532 9182',
       role: 'admin',
       addresses: [],
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: res.user.created_at
+        ? res.user.created_at.split('T')[0]
+        : new Date().toISOString().split('T')[0],
     };
+
+    setIsAdmin(true);
     setCurrentUser(adminUser);
-    saveStored(STORAGE_KEYS.IS_ADMIN, true);
-    saveStored(STORAGE_KEYS.USER, adminUser);
     addActivityLog({
       actionType: 'auth',
       title: 'Admin Login Successful',
-      details: 'Engr. Abiodun Ajayi signed into Control Center with master administrative credentials.',
-      adminName: 'Engr. Abiodun Ajayi',
-      adminEmail: TARGET_ADMIN_EMAIL,
+      details: 'Verified site owner signed into Control Center via Supabase Auth.',
+      adminName: adminUser.fullName,
+      adminEmail: adminUser.email,
       severity: 'success',
     });
     showToast('Welcome back, Engr. Abiodun Ajayi! Control Center loaded.', 'success');
     return { success: true, message: 'Admin login successful' };
   };
 
-  const adminSignUp = async (_fullName: string, _email: string, _pass: string) => {
+  const adminSignUp = async (fullName: string, email: string, pass: string) => {
+    const res = await signUpAdminWithSupabase(fullName, email, pass);
     return {
-      success: false,
-      message: 'Unauthorized access: Public admin registration is disabled. Only the site owner can access the admin dashboard.',
+      success: res.success,
+      message: res.message,
     };
   };
 
@@ -2193,6 +2249,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateUserProfile,
         isAdmin,
         setIsAdmin,
+        isAuthChecking,
 
         addProduct,
         updateProduct,

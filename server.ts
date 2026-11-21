@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { Resend } from 'resend';
-import { seedAdminUser, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from './src/lib/adminSeeder';
+import { seedAdminUser, DEFAULT_ADMIN_EMAIL } from './src/lib/adminSeeder';
 
 // Global error handlers to prevent unhandled rejections from crashing the server
 process.on('uncaughtException', (err) => {
@@ -60,14 +60,22 @@ async function startServer() {
         });
       }
 
-      const email = 'joshuaajayi0148@gmail.com';
-      const password = 'Ayomide0148';
+      const email = DEFAULT_ADMIN_EMAIL;
+      const password =
+        (typeof req.body?.password === 'string' ? req.body.password.trim() : '') ||
+        process.env.ADMIN_SEED_PASSWORD ||
+        '';
+      if (!password || password.length < 6) {
+        return res.status(400).json({
+          error: 'Missing admin password (provide password in request body or set ADMIN_SEED_PASSWORD)',
+        });
+      }
       const supabaseUrl =
         (req.body?.supabaseUrl as string) ||
         process.env.VITE_SUPABASE_URL ||
         process.env.NEXT_PUBLIC_SUPABASE_URL ||
         process.env.SUPABASE_URL ||
-        'https://ynrmthgxykbvuvtwhvlq.supabase.co';
+        '';
 
       const result = await seedAdminUser({
         supabaseUrl,

@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
 export const DEFAULT_ADMIN_EMAIL = 'joshuaajayi0148@gmail.com';
-export const DEFAULT_ADMIN_PASSWORD = 'Ayomide0148';
 
 export interface SeedAdminParams {
   supabaseUrl?: string;
@@ -23,7 +22,7 @@ export interface SeedAdminResult {
 /**
  * Programmatically registers or updates an admin user with email_confirm: true
  * and sets the role in public.profiles to 'admin'.
- * Requires Supabase Service Role Key.
+ * Requires Supabase Service Role Key and explicit password (or ADMIN_SEED_PASSWORD env var).
  */
 export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedAdminResult> {
   const url =
@@ -39,7 +38,7 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
     '';
 
   const email = (params.email || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
-  const password = params.password || DEFAULT_ADMIN_PASSWORD;
+  const password = (params.password || process.env.ADMIN_SEED_PASSWORD || '').trim();
   const fullName = params.fullName || 'Abiodun Ajayi';
 
   if (!url || !url.startsWith('https://')) {
@@ -56,6 +55,15 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
       message:
         'Supabase Service Role Key is required to bypass email confirmation and programmatically seed or update admin accounts.',
       error: 'MISSING_SERVICE_ROLE_KEY',
+    };
+  }
+
+  if (!password || password.length < 6) {
+    return {
+      success: false,
+      message:
+        'Admin password (at least 6 characters) is required via request body or ADMIN_SEED_PASSWORD environment variable.',
+      error: 'MISSING_ADMIN_PASSWORD',
     };
   }
 
@@ -88,7 +96,7 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
     let finalUserId: string;
 
     if (existingUserId) {
-      // 2a. Account exists -> update password to Ayomide0148 and ensure email_confirm: true
+      // 2a. Account exists -> update password and ensure email_confirm: true
       const { data: updateData, error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
         existingUserId,
         {
@@ -198,8 +206,8 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
       success: true,
       message:
         action === 'updated'
-          ? `Admin user (${email}) was found and updated: password set to "${password}", email confirmed, and role verified as 'admin'.`
-          : `Admin user (${email}) was successfully created with password "${password}", email confirmed, and role verified as 'admin'.`,
+          ? `Admin user (${email}) was found and updated: password updated, email confirmed, and role verified as 'admin'.`
+          : `Admin user (${email}) was successfully created, email confirmed, and role verified as 'admin'.`,
       action,
       userId: finalUserId,
       email,
