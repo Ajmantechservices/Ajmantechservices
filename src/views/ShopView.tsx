@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
+import { matchesCategoryFilter } from '../data/categories';
 import {
   Filter,
   SlidersHorizontal,
@@ -38,25 +39,17 @@ export const ShopView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [priceRange, setPriceRange] = useState<number>(300000);
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<
     'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest'
   >('featured');
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
-  // Available tags
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
-    (products || []).forEach((p) => (p.tags || []).forEach((t) => set.add(t)));
-    return Array.from(set);
-  }, [products]);
-
   // Filtered & Sorted Products
   const filteredProducts = useMemo(() => {
     return (products || [])
       .filter((p) => {
-        // Category filter
-        if (selectedCategory !== 'All' && (p.category || '').toLowerCase() !== selectedCategory.toLowerCase()) {
+        // Main category filter (preserves legacy products by matching normalized main category)
+        if (!matchesCategoryFilter(p.category, selectedCategory)) {
           return false;
         }
 
@@ -66,8 +59,7 @@ export const ShopView: React.FC = () => {
           const matches =
             (p.name || '').toLowerCase().includes(q) ||
             (p.shortDescription || '').toLowerCase().includes(q) ||
-            (p.category || '').toLowerCase().includes(q) ||
-            (p.tags || []).some((t) => t.toLowerCase().includes(q));
+            (p.category || '').toLowerCase().includes(q);
           if (!matches) return false;
         }
 
@@ -77,12 +69,6 @@ export const ShopView: React.FC = () => {
 
         // Stock filter
         if (inStockOnly && (p.stock || 0) <= 0) return false;
-
-        // Tags filter
-        if (selectedTags.length > 0) {
-          const hasTag = selectedTags.some((tag) => (p.tags || []).includes(tag));
-          if (!hasTag) return false;
-        }
 
         return true;
       })
@@ -96,20 +82,13 @@ export const ShopView: React.FC = () => {
         if (sortBy === 'newest') return (b.isNewArrival ? 1 : 0) - (a.isNewArrival ? 1 : 0);
         return (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0);
       });
-  }, [products, selectedCategory, searchQuery, priceRange, inStockOnly, selectedTags, sortBy]);
-
-  const handleTagToggle = (tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
+  }, [products, selectedCategory, searchQuery, priceRange, inStockOnly, sortBy]);
 
   const handleResetFilters = () => {
     setSelectedCategory('All');
     setSearchQuery('');
     setPriceRange(300000);
     setInStockOnly(false);
-    setSelectedTags([]);
     setSortBy('featured');
   };
 
@@ -117,8 +96,7 @@ export const ShopView: React.FC = () => {
     (selectedCategory !== 'All' ? 1 : 0) +
     (searchQuery ? 1 : 0) +
     (priceRange < 300000 ? 1 : 0) +
-    (inStockOnly ? 1 : 0) +
-    selectedTags.length;
+    (inStockOnly ? 1 : 0);
 
   return (
     <div id="shop-catalog-view" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
@@ -215,20 +193,26 @@ export const ShopView: React.FC = () => {
                 <span className="text-[11px] opacity-80">{products.length}</span>
               </button>
 
-              {(categories || []).map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.name)}
-                  className={`w-full text-left px-3.5 py-2 rounded-full text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                    (selectedCategory || '').toLowerCase() === (cat.name || '').toLowerCase()
-                      ? 'bg-[#0047AB] text-white font-bold shadow-xs'
-                      : 'text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="truncate">{cat.name}</span>
-                  <span className="text-[11px] opacity-75">{cat.productCount}</span>
-                </button>
-              ))}
+              {(categories || []).map((cat) => {
+                const liveCount = (products || []).filter((p) =>
+                  matchesCategoryFilter(p.category, cat.name)
+                ).length;
+                const isSelected = matchesCategoryFilter(selectedCategory, cat.name) && selectedCategory !== 'All';
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.name)}
+                    className={`w-full text-left px-3.5 py-2 rounded-full text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#0047AB] text-white font-bold shadow-xs'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="truncate">{cat.name}</span>
+                    <span className="text-[11px] opacity-75">{liveCount}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -268,31 +252,6 @@ export const ShopView: React.FC = () => {
               />
               <span>In-Stock Only</span>
             </label>
-          </div>
-
-          {/* Feature Tags */}
-          <div className="pt-2 border-t border-slate-100">
-            <label className="block text-xs font-bold text-[#002D72] uppercase tracking-wider mb-2">
-              Popular Tags
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {(allTags || []).map((tag) => {
-                const isSelected = selectedTags.includes(tag);
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => handleTagToggle(tag)}
-                    className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#0047AB] text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    #{tag}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Reset Filters CTA */}
@@ -359,15 +318,6 @@ export const ShopView: React.FC = () => {
                   <X className="w-3 h-3 cursor-pointer hover:text-slate-900" onClick={() => setSearchQuery('')} />
                 </span>
               )}
-              {selectedTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold"
-                >
-                  #{tag}
-                  <X className="w-3 h-3 cursor-pointer hover:text-slate-900" onClick={() => handleTagToggle(tag)} />
-                </span>
-              ))}
             </div>
           )}
 

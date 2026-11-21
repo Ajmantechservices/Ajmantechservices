@@ -22,8 +22,10 @@ import {
 } from 'lucide-react';
 import { ViewState } from '../types';
 
+import { MAIN_CATEGORIES } from '../data/categories';
+
 export const Footer: React.FC = () => {
-  const { navigateTo, storeSettings, openWhatsApp } = useStore();
+  const { navigateTo, storeSettings, openWhatsApp, categories } = useStore();
 
   const handleCategoryClick = (catSlug: string) => {
     navigateTo('shop', { categorySlug: catSlug });
@@ -180,65 +182,19 @@ export const Footer: React.FC = () => {
           {/* Shop Categories */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-white border-b border-blue-800 pb-2">
-              Shop Lighting
+              Shop Categories
             </h3>
             <ul className="space-y-2 text-xs text-blue-100 font-light">
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('Bulbs')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  💡 LED & Energy Saving Bulbs
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('Fancy Lights')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  ✨ Fancy & Wall Sconces
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('Chandeliers')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  💎 Crystal & Luxury Chandeliers
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('Rope & Strip Lights')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  🪢 Silicone Rope & Strip Lights
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('Security & Solar Lights')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  🔦 Solar & Security Floodlights
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('CCTV & Surveillance')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  📹 CCTV & Smart Cameras
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleCategoryClick('Solar & Inverters')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  ☀️ Hybrid Inverters & Lithium Banks
-                </button>
-              </li>
+              {(categories && categories.length > 0 ? categories : MAIN_CATEGORIES).map((cat) => (
+                <li key={cat.id}>
+                  <button
+                    onClick={() => handleCategoryClick(cat.name)}
+                    className="hover:text-amber-300 transition-colors cursor-pointer text-left"
+                  >
+                    {cat.name}
+                  </button>
+                </li>
+              ))}
             </ul>
           </div>
 

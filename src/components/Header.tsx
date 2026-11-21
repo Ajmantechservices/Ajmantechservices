@@ -162,7 +162,6 @@ export const Header: React.FC = () => {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileServicesOpen, setIsMobileServicesOpen] = useState(false);
-  const [isMobileCategoriesOpen, setIsMobileCategoriesOpen] = useState(true);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -727,7 +726,7 @@ export const Header: React.FC = () => {
                 <div className="flex items-center justify-between pb-1 border-b border-slate-100">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <Grid className="w-3.5 h-3.5 text-[#0047AB]" />
-                    All Categories ({categories?.length || 8})
+                    Categories ({categories?.length || 7})
                   </span>
                   <button
                     onClick={() => {
@@ -736,7 +735,7 @@ export const Header: React.FC = () => {
                     }}
                     className="text-[11px] font-bold text-[#0047AB] hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <span>Full Grid</span>
+                    <span>View All</span>
                     <ArrowRight className="w-3 h-3" />
                   </button>
                 </div>
@@ -746,19 +745,17 @@ export const Header: React.FC = () => {
                     <button
                       key={cat.id}
                       onClick={() => handleCategorySelect(cat.name)}
-                      className="p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 text-left transition-all cursor-pointer group flex items-start gap-2.5"
+                      className="p-2 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 text-left transition-all cursor-pointer group flex items-center gap-2.5"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 group-hover:border-blue-200 flex items-center justify-center text-[#0047AB] shrink-0 shadow-2xs group-hover:scale-105 transition-transform mt-0.5">
-                        {getCategoryIcon(cat.iconName)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-800 group-hover:text-[#0047AB] truncate leading-tight">
-                          {cat.name}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          {cat.productCount} items
-                        </p>
-                      </div>
+                      <img
+                        src={cat.image}
+                        alt={cat.name}
+                        referrerPolicy="no-referrer"
+                        className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0"
+                      />
+                      <span className="text-xs font-bold text-slate-800 group-hover:text-[#0047AB] leading-tight line-clamp-2">
+                        {cat.name}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -847,64 +844,19 @@ export const Header: React.FC = () => {
                     Shop
                   </button>
 
-                  {/* Accordion for Categories */}
-                  <div className="rounded-lg overflow-hidden border border-slate-100">
-                    <button
-                      onClick={() => setIsMobileCategoriesOpen(!isMobileCategoriesOpen)}
-                      className="w-full flex items-center justify-between text-left text-sm font-semibold py-2.5 px-3 bg-slate-50 text-slate-900"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Grid className="w-4 h-4 text-[#0047AB]" />
-                        Shop by Category
-                        <span className="text-[10px] bg-blue-100 text-[#0047AB] font-bold px-1.5 py-0.5 rounded-full">
-                          {categories?.length || 8}
-                        </span>
-                      </span>
-                      <ChevronDown
-                        className={`w-4 h-4 text-slate-500 transition-transform ${
-                          isMobileCategoriesOpen ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-
-                    {isMobileCategoriesOpen && (
-                      <div className="p-2 space-y-1 bg-white border-t border-slate-100 max-h-64 overflow-y-auto">
-                        {categories.map((cat) => (
-                          <button
-                            key={cat.id}
-                            onClick={() => handleCategorySelect(cat.name)}
-                            className="w-full text-left p-2 rounded-md hover:bg-blue-50 text-xs font-medium text-slate-700 flex items-center justify-between group transition-colors cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="p-1 rounded-md bg-slate-100 group-hover:bg-blue-100 text-[#0047AB] transition-colors shrink-0">
-                                {getCategoryIcon(cat.iconName)}
-                              </span>
-                              <span className="truncate group-hover:text-[#0047AB] font-medium text-slate-800">
-                                {cat.name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md font-mono">
-                                {cat.productCount}
-                              </span>
-                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#0047AB]" />
-                            </div>
-                          </button>
-                        ))}
-                        <div className="pt-2 border-t border-slate-100">
-                          <button
-                            onClick={() => {
-                              setIsMobileMenuOpen(false);
-                              navigateTo('categories');
-                            }}
-                            className="w-full text-center py-2 px-3 rounded-lg bg-blue-50 hover:bg-blue-100 text-xs font-bold text-[#0047AB] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <span>Browse All Categories Grid &rarr;</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('categories');
+                    }}
+                    className={`text-left text-sm font-semibold py-2 px-3 rounded-lg transition-colors ${
+                      currentView === 'categories'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    Categories
+                  </button>
 
                   {/* Accordion for Services */}
                   <div className="rounded-lg overflow-hidden border border-slate-100">

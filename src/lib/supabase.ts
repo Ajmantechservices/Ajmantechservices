@@ -776,3 +776,109 @@ export const onSubmitForm = async (e: any): Promise<boolean> => {
   return await handleSaveProduct(newProduct);
 };
 
+async function compressImageFileToDataUrl(file: File, maxDimension = 900, quality = 0.85): Promise<string> {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    throw new Error('Image upload must be performed in the browser.');
+  }
+
+  const rawDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read selected image file.'));
+    reader.readAsDataURL(file);
+  });
+
+  if (file.type === 'image/svg+xml') {
+    return rawDataUrl;
+  }
+
+  return await new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width >= height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(rawDataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch {
+        resolve(rawDataUrl);
+      }
+    };
+    img.onerror = () => resolve(rawDataUrl);
+    img.src = rawDataUrl;
+  });
+}
+
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    const [header, base64] = dataUrl.split(',');
+    if (!header || !base64) return null;
+    const mimeMatch = header.match(/data:([^;]+);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Uploads a category image file to Supabase Storage (when a bucket is configured)
+ * and gracefully falls back to an optimized compressed Data URL for immediate persistence.
+ */
+export async function uploadCategoryImage(
+  file: File,
+  categorySlug: string
+): Promise<{ url: string; persistedToStorage: boolean }> {
+  const optimizedDataUrl = await compressImageFileToDataUrl(file);
+  const cleanSlug = (categorySlug || 'category').toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+
+  if (supabase && isSupabaseConfigured()) {
+    const blob = dataUrlToBlob(optimizedDataUrl);
+    if (blob) {
+      const filePath = `categories/${cleanSlug}-${Date.now()}.jpg`;
+      for (const bucket of ['categories', 'product-images', 'images']) {
+        try {
+          const { error: uploadErr } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, blob, {
+              contentType: blob.type || 'image/jpeg',
+              upsert: true,
+            });
+          if (!uploadErr) {
+            const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+            if (publicData?.publicUrl) {
+              return { url: publicData.publicUrl, persistedToStorage: true };
+            }
+          }
+        } catch {
+          // Try next bucket or fall back cleanly
+        }
+      }
+    }
+  }
+
+  return { url: optimizedDataUrl, persistedToStorage: false };
+}
+
+

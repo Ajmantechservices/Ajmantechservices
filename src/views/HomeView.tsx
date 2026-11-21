@@ -5,25 +5,13 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
-  Truck,
   Wrench,
   MessageCircle,
-  Sun,
-  Lightbulb,
-  Gem,
-  Cable,
-  ShieldAlert,
-  Camera,
-  SunMedium,
-  ToggleRight,
-  CheckCircle2,
   Star,
-  Clock,
   ChevronDown,
   ShoppingBag,
   Zap,
   Award,
-  Users,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -66,20 +54,6 @@ export const HomeView: React.FC = () => {
 
   const featuredProducts = (products || []).filter((p) => p.isFeatured).slice(0, 6);
   const bestSellers = (products || []).filter((p) => p.isBestSeller).slice(0, 6);
-
-  const getCategoryIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'Lightbulb': return <Lightbulb className="w-6 h-6" />;
-      case 'Sparkles': return <Sparkles className="w-6 h-6" />;
-      case 'Gem': return <Gem className="w-6 h-6" />;
-      case 'Cable': return <Cable className="w-6 h-6" />;
-      case 'ShieldAlert': return <ShieldAlert className="w-6 h-6" />;
-      case 'Camera': return <Camera className="w-6 h-6" />;
-      case 'SunMedium': return <SunMedium className="w-6 h-6" />;
-      case 'ToggleRight': return <ToggleRight className="w-6 h-6" />;
-      default: return <Sparkles className="w-6 h-6" />;
-    }
-  };
 
   const handleScrollToCategories = () => {
     const categoriesSection = document.getElementById('all-categories') || document.getElementById('categories-section');
@@ -172,23 +146,28 @@ export const HomeView: React.FC = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
           {(categories || []).map((cat) => (
-            <div
+            <button
               key={cat.id}
+              type="button"
               onClick={() => navigateTo('shop', { categorySlug: cat.name })}
-              className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-xs hover:shadow-md transition-all group flex flex-col items-center text-center cursor-pointer"
+              className="bg-white rounded-2xl border border-slate-100 shadow-xs hover:shadow-lg hover:border-blue-200 transition-all duration-300 group overflow-hidden flex flex-col text-left cursor-pointer"
             >
-              <div className="w-16 h-16 bg-blue-50 text-[#0047AB] rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
-                {getCategoryIcon(cat.iconName)}
+              <div className="relative w-full aspect-[4/3] bg-slate-100 overflow-hidden">
+                <img
+                  src={cat.image}
+                  alt={cat.name}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
               </div>
-              <h3 className="font-bold text-sm text-slate-900 mb-1 group-hover:text-[#0047AB] transition-colors">
-                {cat.name}
-              </h3>
-              <p className="text-[10px] text-slate-500 line-clamp-1">
-                {cat.description}
-              </p>
-            </div>
+              <div className="p-3.5 sm:p-4 flex items-center justify-center text-center min-h-[56px]">
+                <h3 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-[#0047AB] transition-colors leading-snug">
+                  {cat.name}
+                </h3>
+              </div>
+            </button>
           ))}
         </div>
       </section>
@@ -584,7 +563,7 @@ export const HomeView: React.FC = () => {
             </div>
             <h3 className="font-bold text-slate-900 text-sm mb-1">Find Your Product</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Browse categories or search for chandeliers, solar floodlights, switches, or CCTV cameras.
+              Browse categories or search for chandeliers, solar products, switches, or CCTV cameras.
             </p>
           </div>
 

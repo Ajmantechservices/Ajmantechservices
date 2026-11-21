@@ -19,6 +19,7 @@ import {
   NewActivityLog,
 } from '../types';
 import {
+  CATEGORY_DEFAULT_IMAGES,
   INITIAL_CATEGORIES,
   INITIAL_PRODUCTS,
   INITIAL_SERVICES,
@@ -28,6 +29,12 @@ import {
   INITIAL_STORE_SETTINGS,
   INITIAL_ACTIVITY_LOGS,
 } from '../data/initialData';
+import {
+  LEGACY_SUBDIVIDED_CATEGORY_NAMES,
+  MAIN_CATEGORIES,
+  matchesCategoryFilter,
+  slugifyCategoryName,
+} from '../data/categories';
 import {
   supabase,
   isSupabaseConfigured,
@@ -164,9 +171,10 @@ interface StoreContextType {
   deleteMultipleProducts: (ids: string[]) => Promise<void>;
 
   // Category Admin Operations
-  addCategory: (category: Omit<Category, 'id'>) => Promise<Category> | Category;
-  updateCategory: (category: Category) => Promise<void> | void;
-  deleteCategory: (id: string) => Promise<void> | void;
+  addCategory: (category: Omit<Category, 'id'> & { id?: string }) => Promise<Category>;
+  updateCategory: (category: Category) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  syncMainCategoriesToSupabase: () => Promise<boolean>;
 
   // Gallery Operations
   addGalleryImagesToProduct: (productId: string, imageUrls: string[], caption?: string, displayOrder?: number) => Promise<boolean>;
@@ -195,7 +203,7 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
   PRODUCTS: 'ajmantech_products_v1',
-  CATEGORIES: 'ajmantech_categories_v1',
+  CATEGORIES: 'ajmantech_main_categories_v2',
   SERVICES: 'ajmantech_services_v1',
   PROJECTS: 'ajmantech_projects_v1',
   REVIEWS: 'ajmantech_reviews_v1',
@@ -208,6 +216,85 @@ const STORAGE_KEYS = {
   IS_ADMIN: 'ajmantech_is_admin_v1',
   REGISTERED_USERS: 'ajmantech_registered_customers_v1',
   ACTIVITY_LOGS: 'ajmantech_activity_logs_v1',
+};
+
+const resolveCategoryImage = (name: string, slug: string, rawIcon?: string | null, rawImage?: string | null): string => {
+  const candidates = [rawImage, rawIcon];
+  for (const val of candidates) {
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('/') ||
+        trimmed.startsWith('data:image/')
+      ) {
+        return trimmed;
+      }
+    }
+  }
+  const byName = CATEGORY_DEFAULT_IMAGES[name];
+  if (byName) return byName;
+  const matchedInit = INITIAL_CATEGORIES.find(
+    (ic) => ic.slug === slug || ic.name.toLowerCase() === name.toLowerCase()
+  );
+  return matchedInit?.image || CATEGORY_DEFAULT_IMAGES['Chandeliers'];
+};
+
+const mergeWithMainCategories = (dbCats: any[], currentProducts: Product[]): Category[] => {
+  const mainIds = new Set(MAIN_CATEGORIES.map((m) => m.id));
+  const filteredDb = (dbCats || []).filter((c: any) => {
+    const cleanName = String(c?.name || '').trim().toLowerCase();
+    // Keep if it is a main category ID (even if renamed by admin) or not a legacy subdivided category
+    if (c?.id && mainIds.has(String(c.id))) return true;
+    return !LEGACY_SUBDIVIDED_CATEGORY_NAMES.has(cleanName);
+  });
+
+  const mappedFromDb: Category[] = filteredDb.map((c: any) => {
+    const name = String(c.name || '').trim();
+    const slug = String(c.slug || slugifyCategoryName(name));
+    const iconName =
+      c.icon && !String(c.icon).startsWith('http') && !String(c.icon).startsWith('/') && !String(c.icon).startsWith('data:')
+        ? String(c.icon)
+        : MAIN_CATEGORIES.find((m) => m.id === c.id || m.slug === slug)?.iconName || 'Sparkles';
+
+    return {
+      id: String(c.id || `cat-${slug}`),
+      name,
+      slug,
+      description: '',
+      image: resolveCategoryImage(name, slug, c.icon, c.image_url || c.image),
+      iconName,
+      productCount: currentProducts.filter((p) => matchesCategoryFilter(p.category, name)).length,
+      isPopular: true,
+    };
+  });
+
+  // Ensure all 7 core main categories are present unless already represented by id or slug
+  const merged: Category[] = [...mappedFromDb];
+  for (const initCat of INITIAL_CATEGORIES) {
+    const exists = merged.some(
+      (c) =>
+        c.id === initCat.id ||
+        c.slug.toLowerCase() === initCat.slug.toLowerCase() ||
+        c.name.toLowerCase() === initCat.name.toLowerCase()
+    );
+    if (!exists) {
+      merged.push({
+        ...initCat,
+        productCount: currentProducts.filter((p) => matchesCategoryFilter(p.category, initCat.name)).length,
+      });
+    }
+  }
+
+  // Sort canonical 7 categories first in the requested order, followed by any custom admin categories
+  const orderMap = new Map(INITIAL_CATEGORIES.map((c, idx) => [c.id, idx]));
+  return merged.sort((a, b) => {
+    const idxA = orderMap.has(a.id) ? orderMap.get(a.id)! : 100;
+    const idxB = orderMap.has(b.id) ? orderMap.get(b.id)! : 100;
+    if (idxA !== idxB) return idxA - idxB;
+    return a.name.localeCompare(b.name);
+  });
 };
 
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -760,6 +847,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           .select('*')
           .order('created_at', { ascending: false });
 
+        let latestProducts = products;
         if (!prodErr && Array.isArray(dbProducts)) {
           const mappedProducts: Product[] = dbProducts.map((p: any) => ({
             id: p.id,
@@ -790,23 +878,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               material: p.specifications?.material,
             },
           }));
+          latestProducts = mappedProducts;
           setProducts(mappedProducts);
         }
 
-        // 2. Fetch categories
+        // 2. Fetch categories & enforce the 7 main category structure non-destructively
         const { data: dbCats, error: catErr } = await supabase.from('categories').select('*');
-        if (!catErr && dbCats && dbCats.length > 0) {
-          const mappedCats: Category[] = dbCats.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            slug: c.slug,
-            description: c.description || '',
-            image: c.icon || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
-            iconName: c.icon || 'Sparkles',
-            productCount: c.item_count ?? 0,
-            isPopular: true,
-          }));
-          setCategories(mappedCats);
+        if (!catErr && Array.isArray(dbCats)) {
+          setCategories(mergeWithMainCategories(dbCats, latestProducts));
         }
 
         // 3. Fetch Orders
@@ -1884,66 +1963,199 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // Category CRUD
-  const addCategory = async (catData: Omit<Category, 'id'>) => {
+  const addCategory = async (catData: Omit<Category, 'id'> & { id?: string }) => {
+    const cleanName = catData.name.trim();
+    const cleanSlug = slugifyCategoryName(catData.slug || cleanName) || `category-${Date.now()}`;
     const newCat: Category = {
       ...catData,
-      id: 'cat-' + (catData.slug || Date.now()),
+      id: catData.id || `cat-${cleanSlug}`,
+      name: cleanName,
+      slug: cleanSlug,
+      description: '',
+      image: catData.image?.trim() || resolveCategoryImage(cleanName, cleanSlug),
+      iconName: catData.iconName || 'Sparkles',
+      productCount: products.filter((p) => matchesCategoryFilter(p.category, cleanName)).length,
+      isPopular: true,
     };
 
-    setCategories((prev) => [...prev, newCat]);
+    setCategories((prev) => {
+      const updated = [...prev.filter((c) => c.id !== newCat.id), newCat];
+      saveStored(STORAGE_KEYS.CATEGORIES, updated);
+      return updated;
+    });
 
     if (isSupabaseConfigured() && supabase) {
       try {
-        await supabase.from('categories').insert({
-          id: newCat.id,
-          name: newCat.name,
-          slug: newCat.slug,
-          description: newCat.description || '',
-          icon: newCat.image || newCat.iconName,
-          item_count: newCat.productCount || 0,
-        });
+        const { error } = await supabase.from('categories').upsert(
+          {
+            id: newCat.id,
+            name: newCat.name,
+            slug: newCat.slug,
+            description: '',
+            icon: newCat.image || newCat.iconName,
+            item_count: newCat.productCount || 0,
+          },
+          { onConflict: 'id' }
+        );
+        if (error) {
+          console.error('Supabase category insert error:', error.message);
+          showToast(`Saved locally. Supabase notice: ${error.message}`, 'info');
+          return newCat;
+        }
       } catch (err) {
         console.warn('Supabase category insert notice:', err);
       }
     }
 
+    addActivityLog({
+      actionType: 'settings',
+      title: `Category Created: ${newCat.name}`,
+      details: `Added main storefront category "${newCat.name}" (/${newCat.slug}).`,
+      severity: 'info',
+    });
     showToast(`Category "${newCat.name}" created!`);
     return newCat;
   };
 
   const updateCategory = async (updated: Category) => {
-    setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    const previous = categories.find((c) => c.id === updated.id);
+    const cleanName = updated.name.trim();
+    const cleanSlug = slugifyCategoryName(updated.slug || cleanName) || updated.slug;
+    const normalizedCategory: Category = {
+      ...updated,
+      name: cleanName,
+      slug: cleanSlug,
+      description: '',
+      image: updated.image?.trim() || resolveCategoryImage(cleanName, cleanSlug),
+    };
+
+    setCategories((prev) => {
+      const next = prev.map((c) => (c.id === normalizedCategory.id ? normalizedCategory : c));
+      saveStored(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
+
+    // Preserve product assignments if a main category was renamed
+    if (previous && previous.name !== cleanName) {
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.category.toLowerCase() === previous.name.toLowerCase()
+            ? { ...p, category: cleanName }
+            : p
+        )
+      );
+    }
 
     if (isSupabaseConfigured() && supabase) {
       try {
-        await supabase.from('categories').upsert({
-          id: updated.id,
-          name: updated.name,
-          slug: updated.slug,
-          description: updated.description,
-          icon: updated.image || updated.iconName,
-          item_count: updated.productCount,
-        });
+        const { error } = await supabase.from('categories').upsert(
+          {
+            id: normalizedCategory.id,
+            name: normalizedCategory.name,
+            slug: normalizedCategory.slug,
+            description: '',
+            icon: normalizedCategory.image || normalizedCategory.iconName,
+            item_count: normalizedCategory.productCount || 0,
+          },
+          { onConflict: 'id' }
+        );
+        if (error) {
+          console.error('Supabase category update error:', error.message);
+          showToast(`Updated locally. Supabase notice: ${error.message}`, 'info');
+          return;
+        }
+
+        if (previous && previous.name !== cleanName) {
+          await supabase
+            .from('products')
+            .update({ category: cleanName })
+            .eq('category', previous.name);
+        }
       } catch (err) {
         console.warn('Supabase category update notice:', err);
       }
     }
 
-    showToast(`Category "${updated.name}" updated!`);
+    addActivityLog({
+      actionType: 'settings',
+      title: `Category Updated: ${normalizedCategory.name}`,
+      details: `Updated category "${normalizedCategory.name}" name/image.`,
+      severity: 'info',
+    });
+    showToast(`Category "${normalizedCategory.name}" updated!`);
   };
 
   const deleteCategory = async (id: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== id));
+    const target = categories.find((c) => c.id === id);
+    setCategories((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      saveStored(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
 
     if (isSupabaseConfigured() && supabase) {
       try {
-        await supabase.from('categories').delete().eq('id', id);
+        const { error } = await supabase.from('categories').delete().eq('id', id);
+        if (error) {
+          console.warn('Supabase category delete notice:', error.message);
+        }
       } catch (err) {
         console.warn('Supabase category delete notice:', err);
       }
     }
 
-    showToast('Category deleted.', 'info');
+    if (target) {
+      addActivityLog({
+        actionType: 'settings',
+        title: `Category Removed: ${target.name}`,
+        details: `Removed category "${target.name}" while preserving all existing products.`,
+        severity: 'warning',
+      });
+    }
+    showToast('Category deleted. Existing products remain preserved.', 'info');
+  };
+
+  const syncMainCategoriesToSupabase = async (): Promise<boolean> => {
+    const updatedList: Category[] = INITIAL_CATEGORIES.map((initCat) => {
+      const existing = categories.find((c) => c.id === initCat.id || c.slug === initCat.slug);
+      return {
+        ...initCat,
+        name: existing?.name || initCat.name,
+        image: existing?.image || initCat.image,
+        description: '',
+        productCount: products.filter((p) => matchesCategoryFilter(p.category, existing?.name || initCat.name)).length,
+      };
+    });
+
+    setCategories(updatedList);
+    saveStored(STORAGE_KEYS.CATEGORIES, updatedList);
+
+    if (!isSupabaseConfigured() || !supabase) {
+      showToast('7 main categories synchronized locally!', 'success');
+      return true;
+    }
+
+    try {
+      const rows = updatedList.map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        description: '',
+        icon: c.image || c.iconName,
+        item_count: c.productCount,
+      }));
+      const { error } = await supabase.from('categories').upsert(rows, { onConflict: 'id' });
+      if (error) {
+        console.error('Supabase sync main categories error:', error.message);
+        showToast(`Synced locally. Supabase notice: ${error.message}`, 'info');
+        return false;
+      }
+      showToast('7 main categories synchronized with Supabase!', 'success');
+      return true;
+    } catch (err: any) {
+      console.warn('Supabase sync main categories notice:', err);
+      return false;
+    }
   };
 
   // Product Gallery Operations
@@ -2080,6 +2292,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .select('*')
         .order('created_at', { ascending: false });
 
+      let latestProducts = products;
       if (!prodErr && Array.isArray(dbProducts)) {
         const mappedProducts: Product[] = dbProducts.map((p: any) => ({
           id: p.id,
@@ -2110,22 +2323,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             material: p.specifications?.material,
           },
         }));
+        latestProducts = mappedProducts;
         setProducts(mappedProducts);
       }
 
       const { data: dbCats, error: catErr } = await supabase.from('categories').select('*');
       if (!catErr && Array.isArray(dbCats)) {
-        const mappedCats: Category[] = dbCats.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          slug: c.slug,
-          description: c.description || '',
-          image: c.icon || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600&auto=format&fit=crop',
-          iconName: c.icon || 'Sparkles',
-          productCount: c.item_count ?? 0,
-          isPopular: true,
-        }));
-        setCategories(mappedCats);
+        setCategories(mergeWithMainCategories(dbCats, latestProducts));
       }
       showToast('Catalog synchronized with Supabase!', 'success');
     } catch (e) {
@@ -2258,6 +2462,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         addCategory,
         updateCategory,
         deleteCategory,
+        syncMainCategoriesToSupabase,
 
         addGalleryImagesToProduct,
         deleteProductGalleryItem,

@@ -13,6 +13,11 @@ import {
   signInAdminWithSupabase,
   signOutAdminWithSupabase,
 } from '../../../src/lib/supabase';
+import {
+  MAIN_CATEGORY_NAMES,
+  LEGACY_SUBDIVIDED_CATEGORY_NAMES,
+  normalizeMainCategory,
+} from '../../../src/data/categories';
 
 interface AdminProductRecord {
   id: string;
@@ -44,7 +49,7 @@ const EMPTY_FORM: ProductFormState = {
   name: '',
   description: '',
   price: '',
-  category: '',
+  category: MAIN_CATEGORY_NAMES[0],
   image_url: '',
   stock: '',
 };
@@ -58,6 +63,7 @@ export default function AdminProductsPage() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [products, setProducts] = useState<AdminProductRecord[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(MAIN_CATEGORY_NAMES);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
@@ -132,6 +138,15 @@ export default function AdminProductsPage() {
       } else {
         setProducts((data as AdminProductRecord[]) || []);
       }
+
+      const { data: catData } = await supabase.from('categories').select('name');
+      if (Array.isArray(catData) && catData.length > 0) {
+        const dbNames = catData
+          .map((c: any) => String(c?.name || '').trim())
+          .filter((name) => name && !LEGACY_SUBDIVIDED_CATEGORY_NAMES.has(name.toLowerCase()));
+        const merged = Array.from(new Set([...MAIN_CATEGORY_NAMES, ...dbNames]));
+        setCategoryOptions(merged);
+      }
     } catch (err: any) {
       console.error('Unexpected error fetching products:', err);
       setStatusFeedback({
@@ -145,7 +160,7 @@ export default function AdminProductsPage() {
 
   // Handle Input Changes
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -227,13 +242,17 @@ export default function AdminProductsPage() {
 
   // Edit product action
   const handleEdit = (prod: AdminProductRecord) => {
+    const rawCat = prod.category || prod.category_name || '';
+    const resolvedCat = categoryOptions.includes(rawCat)
+      ? rawCat
+      : normalizeMainCategory(rawCat);
     setForm({
       id: prod.id,
       name: prod.name || '',
       description:
         prod.description || prod.full_description || prod.short_description || '',
       price: prod.price !== undefined && prod.price !== null ? String(prod.price) : '',
-      category: prod.category || prod.category_name || '',
+      category: resolvedCat,
       image_url: prod.image_url || prod.image || '',
       stock: prod.stock !== undefined && prod.stock !== null ? String(prod.stock) : '',
     });
@@ -422,16 +441,21 @@ export default function AdminProductsPage() {
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Category
+              Main Category *
             </label>
-            <input
-              type="text"
+            <select
               name="category"
               value={form.category}
               onChange={handleChange}
-              placeholder="e.g. Chandeliers, Fancy Lights"
+              required
               className="w-full px-3 py-2 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
+            >
+              {categoryOptions.map((catName) => (
+                <option key={catName} value={catName}>
+                  {catName}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

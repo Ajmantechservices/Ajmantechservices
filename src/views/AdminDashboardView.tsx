@@ -85,7 +85,14 @@ import {
   fetchSupabaseOrders,
   SupabaseOrderRecord,
   handleSaveProduct as saveProductToSupabase,
+  uploadCategoryImage,
 } from '../lib/supabase';
+import {
+  MAIN_CATEGORY_NAMES,
+  matchesCategoryFilter,
+  normalizeMainCategory,
+  slugifyCategoryName,
+} from '../data/categories';
 
 type AdminTab =
   | 'products'
@@ -113,6 +120,7 @@ export const AdminDashboardView: React.FC = () => {
     addCategory,
     updateCategory,
     deleteCategory,
+    syncMainCategoriesToSupabase,
     addGalleryImagesToProduct,
     deleteProductGalleryItem,
     deleteMultipleProductGalleryItems,
@@ -167,11 +175,12 @@ export const AdminDashboardView: React.FC = () => {
 
   // Bulk Selection & Deletion Confirmation State
   interface DeleteConfirmState {
-    type: 'product' | 'bulk-products' | 'gallery' | 'bulk-gallery';
+    type: 'product' | 'bulk-products' | 'gallery' | 'bulk-gallery' | 'category';
     title: string;
     description: string;
     product?: Product;
     productIds?: string[];
+    category?: Category;
     galleryItem?: {
       galleryId?: string;
       productId: string;
@@ -331,13 +340,16 @@ export const AdminDashboardView: React.FC = () => {
   const [prodThumbnailUrl, setProdThumbnailUrl] = useState('');
 
   // -------------------------------------------------------------
-  // Categories State
+  // Categories Modal & Management State
   // -------------------------------------------------------------
-  const [newCatName, setNewCatName] = useState('');
-  const [newCatSlug, setNewCatSlug] = useState('');
-  const [newCatImageUrl, setNewCatImageUrl] = useState('');
-  const [newCatDesc, setNewCatDesc] = useState('');
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [catName, setCatName] = useState('');
+  const [catSlug, setCatSlug] = useState('');
+  const [catImageUrl, setCatImageUrl] = useState('');
+  const [isUploadingCatImage, setIsUploadingCatImage] = useState(false);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [isSyncingCategories, setIsSyncingCategories] = useState(false);
 
   // -------------------------------------------------------------
   // Gallery State
@@ -644,13 +656,13 @@ export const AdminDashboardView: React.FC = () => {
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      if (categoryFilter !== 'all' && p.category !== categoryFilter) {
+      if (categoryFilter !== 'all' && !matchesCategoryFilter(p.category, categoryFilter)) {
         return false;
       }
       if (productSearch.trim()) {
         const q = productSearch.toLowerCase();
         const name = p.name.toLowerCase();
-        const sku = p.sku.toLowerCase();
+        const sku = (p.specifications?.sku || (p as any).sku || '').toLowerCase();
         const cat = p.category.toLowerCase();
         if (!name.includes(q) && !sku.includes(q) && !cat.includes(q)) {
           return false;
@@ -726,7 +738,10 @@ export const AdminDashboardView: React.FC = () => {
     setEditingProduct(prod);
     setProdName(prod.name);
     setProdSlug(prod.slug || prod.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
-    setProdCategory(prod.category);
+    const exactMatch = categories.some(
+      (c) => c.name.toLowerCase() === String(prod.category || '').toLowerCase()
+    );
+    setProdCategory(exactMatch ? prod.category : normalizeMainCategory(prod.category));
     setProdPrice(prod.price);
     setProdDiscountPrice(prod.discountPrice);
     setProdStock(prod.stock);
@@ -811,6 +826,92 @@ export const AdminDashboardView: React.FC = () => {
 
   const handleSaveProduct = onSubmitForm;
 
+  const handleOpenAddCategory = () => {
+    setEditingCategory(null);
+    setCatName('');
+    setCatSlug('');
+    setCatImageUrl('');
+    setShowCategoryModal(true);
+  };
+
+  const handleOpenEditCategory = (cat: Category) => {
+    setEditingCategory(cat);
+    setCatName(cat.name);
+    setCatSlug(cat.slug);
+    setCatImageUrl(cat.image || '');
+    setShowCategoryModal(true);
+  };
+
+  const handleUploadCategoryImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (JPG, PNG, WEBP).', 'error');
+      return;
+    }
+    setIsUploadingCatImage(true);
+    try {
+      const slugForFile = slugifyCategoryName(catSlug || catName) || 'category';
+      const { url, persistedToStorage } = await uploadCategoryImage(file, slugForFile);
+      setCatImageUrl(url);
+      showToast(
+        persistedToStorage
+          ? 'Category image uploaded to Supabase Storage!'
+          : 'Category image ready to save!',
+        'success'
+      );
+    } catch (err: any) {
+      showToast(err?.message || 'Unable to process selected image.', 'error');
+    } finally {
+      setIsUploadingCatImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = catName.trim();
+    if (!cleanName) {
+      showToast('Please enter a category name.', 'error');
+      return;
+    }
+    const cleanSlug = slugifyCategoryName(catSlug || cleanName);
+    setIsSavingCategory(true);
+    try {
+      if (editingCategory) {
+        await updateCategory({
+          ...editingCategory,
+          name: cleanName,
+          slug: cleanSlug || editingCategory.slug,
+          description: '',
+          image: catImageUrl.trim() || editingCategory.image,
+        });
+      } else {
+        await addCategory({
+          name: cleanName,
+          slug: cleanSlug || `cat-${Date.now()}`,
+          description: '',
+          image: catImageUrl.trim(),
+          iconName: 'Sparkles',
+          productCount: 0,
+          isPopular: true,
+        });
+      }
+      setShowCategoryModal(false);
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
+
+  const handleSyncMainCategories = async () => {
+    setIsSyncingCategories(true);
+    try {
+      await syncMainCategoriesToSupabase();
+    } finally {
+      setIsSyncingCategories(false);
+    }
+  };
+
   const handleExecuteDelete = async () => {
     if (!deleteConfirm) return;
     setIsDeletingItem(true);
@@ -823,6 +924,8 @@ export const AdminDashboardView: React.FC = () => {
         await deleteMultipleProducts(deleteConfirm.productIds);
         setSelectedProductIds([]);
         showToast(`Deleted ${deleteConfirm.productIds.length} products.`, 'info');
+      } else if (deleteConfirm.type === 'category' && deleteConfirm.category) {
+        await deleteCategory(deleteConfirm.category.id);
       }
     } finally {
       setIsDeletingItem(false);
@@ -2171,30 +2274,83 @@ export const AdminDashboardView: React.FC = () => {
           <div className="space-y-6 animate-fade-in">
             <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Categories Manager</h2>
-                <p className="text-xs text-slate-500 mt-1">Organize your product hierarchy and navigation links.</p>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Main Categories Manager</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Manage the main storefront categories, update names, and upload representative category images. Existing products stay linked safely.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSyncMainCategories}
+                  disabled={isSyncingCategories}
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 text-[#002D72] font-bold text-xs flex items-center gap-2 cursor-pointer transition-all disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCategories ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingCategories ? 'Syncing...' : 'Sync 7 Main Categories'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenAddCategory}
+                  className="py-2.5 px-4 rounded-xl bg-[#002D72] hover:bg-[#001D4D] text-white font-bold text-xs shadow-sm flex items-center gap-2 cursor-pointer transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Category</span>
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {categories.map((cat) => {
-                const count = products.filter((p) => p.category === cat.name).length;
+                const count = products.filter((p) => matchesCategoryFilter(p.category, cat.name)).length;
                 return (
                   <div
                     key={cat.id}
-                    className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex items-center gap-4 hover:shadow-sm transition-all"
+                    className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                   >
-                    <img
-                      src={cat.image || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600'}
-                      alt={cat.name}
-                      className="w-16 h-16 rounded-xl object-cover bg-slate-100 border border-slate-200 shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-slate-900 text-sm">{cat.name}</h4>
-                      <p className="text-xs text-slate-500 font-mono mt-0.5">/{cat.slug}</p>
-                      <span className="inline-block mt-2 px-2 py-0.5 rounded bg-blue-50 text-[#002D72] text-[10px] font-bold">
-                        {count} products
-                      </span>
+                    <div>
+                      <div className="relative aspect-[4/3] bg-slate-100 border-b border-slate-100 overflow-hidden">
+                        <img
+                          src={cat.image || 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=600'}
+                          alt={cat.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-white/95 text-[#002D72] text-[10px] font-bold shadow-xs">
+                          {count} product{count === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      <div className="p-4">
+                        <h4 className="font-bold text-slate-900 text-sm sm:text-base">{cat.name}</h4>
+                        <p className="text-[11px] text-slate-400 font-mono mt-0.5">/{cat.slug}</p>
+                      </div>
+                    </div>
+
+                    <div className="px-4 pb-4 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditCategory(cat)}
+                        className="flex-1 py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#002D72] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Edit Name & Image</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteConfirm({
+                            type: 'category',
+                            title: `Delete Category "${cat.name}"?`,
+                            description:
+                              'This removes the category from the storefront menu while preserving all existing products in your inventory.',
+                            category: cat,
+                          })
+                        }
+                        className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 cursor-pointer transition-colors"
+                        title="Delete category"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -2975,6 +3131,130 @@ export const AdminDashboardView: React.FC = () => {
                   className="px-5 py-2 rounded-xl bg-[#002D72] hover:bg-[#001D4D] text-white font-bold text-xs shadow-sm cursor-pointer"
                 >
                   {editingProduct ? 'Save Product Changes' : 'Create Product'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* CATEGORY CREATE / EDIT MODAL                                   */}
+      {/* ============================================================== */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl my-8 animate-fade-in">
+            <div className="bg-[#002D72] text-white px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-base">
+                  {editingCategory ? `Edit Category: ${editingCategory.name}` : 'Create New Main Category'}
+                </h3>
+                <p className="text-xs text-blue-200">
+                  Update the category name and upload its representative storefront image.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCategoryModal(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategory} className="p-6 space-y-4">
+              <div>
+                <label htmlFor="catNameInput" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Category Name *
+                </label>
+                <input
+                  id="catNameInput"
+                  type="text"
+                  required
+                  value={catName}
+                  onChange={(e) => {
+                    const nextName = e.target.value;
+                    setCatName(nextName);
+                    if (!editingCategory) {
+                      setCatSlug(slugifyCategoryName(nextName));
+                    }
+                  }}
+                  placeholder="e.g. Bulbs and Lighting"
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="catSlugInput" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  URL Slug
+                </label>
+                <input
+                  id="catSlugInput"
+                  type="text"
+                  value={catSlug}
+                  onChange={(e) => setCatSlug(e.target.value)}
+                  placeholder="e.g. bulbs-and-lighting"
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Category Image Upload or URL
+                </label>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#002D72] border border-blue-200 text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingCatImage ? 'Uploading Image...' : 'Upload Image File'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isUploadingCatImage}
+                      onChange={handleUploadCategoryImageFile}
+                      className="sr-only"
+                    />
+                  </label>
+                  <span className="text-[11px] text-slate-400">JPG, PNG, or WEBP</span>
+                </div>
+
+                <input
+                  type="text"
+                  value={catImageUrl}
+                  onChange={(e) => setCatImageUrl(e.target.value)}
+                  placeholder="Or paste an image URL (https://...)"
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                />
+
+                {catImageUrl && (
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[4/3] max-h-48 w-full">
+                    <img
+                      src={catImageUrl}
+                      alt={catName || 'Category preview'}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCategoryModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCategory || isUploadingCatImage}
+                  className="px-5 py-2 rounded-xl bg-[#002D72] hover:bg-[#001D4D] disabled:opacity-60 text-white font-bold text-xs shadow-sm cursor-pointer"
+                >
+                  {isSavingCategory
+                    ? 'Saving...'
+                    : editingCategory
+                    ? 'Save Category Changes'
+                    : 'Create Category'}
                 </button>
               </div>
             </form>
