@@ -15,39 +15,33 @@ import {
   signUpAdminWithSupabase,
 } from '../lib/supabase';
 
-const SQL_TRIGGER_CODE = `-- 1. Create a function to assign 'admin' role automatically to your email
+const SQL_TRIGGER_CODE = `-- 1. Hardened admin check reading server-controlled app_metadata ONLY
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin', false);
+$$;
+
+-- 2. Trigger assigns admin strictly from app_metadata or owner email (never user_metadata)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE assigned_role TEXT := 'customer';
 BEGIN
-  INSERT INTO public.profiles (id, email, role)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    CASE 
-      WHEN NEW.email = 'joshuaajayi0148@gmail.com' THEN 'admin'::user_role
-      ELSE 'customer'::user_role
-    END
-  )
-  ON CONFLICT (id) DO UPDATE
-  SET role = EXCLUDED.role;
+  IF (NEW.raw_app_meta_data ->> 'role') = 'admin'
+     OR lower(coalesce(NEW.email, '')) = 'joshuaajayi0148@gmail.com' THEN
+    assigned_role := 'admin';
+  END IF;
+  INSERT INTO public.profiles (id, email, full_name, role)
+  VALUES (NEW.id, NEW.email, coalesce(NEW.raw_user_meta_data ->> 'full_name', ''), assigned_role)
+  ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
--- 2. Attach the trigger to automatic sign-ups
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- 3. Ensure profiles table allows reading role
+-- 3. Strict owner/admin RLS on profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Allow authenticated read profile" ON public.profiles;
-CREATE POLICY "Allow authenticated read profile" 
-ON public.profiles FOR SELECT 
-TO authenticated 
-USING (true);`;
+DROP POLICY IF EXISTS "Profiles: own or admin select" ON public.profiles;
+CREATE POLICY "Profiles: own or admin select" ON public.profiles FOR SELECT
+USING (auth.uid() = id OR public.is_admin());`;
 
 export const AdminLoginView: React.FC = () => {
   const {
@@ -81,7 +75,6 @@ export const AdminLoginView: React.FC = () => {
   // Auto-seed / SQL modals
   const [showSeedModal, setShowSeedModal] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
-  const [serviceRoleKeyInput, setServiceRoleKeyInput] = useState('');
   const [seedPasswordInput, setSeedPasswordInput] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -89,10 +82,15 @@ export const AdminLoginView: React.FC = () => {
 
   const supabaseStatus = getSupabaseConfigStatus();
 
-  // Navigate to admin view once StoreContext verifies an active Supabase admin session
+  // Navigate to admin view once StoreContext verifies an active Supabase admin session,
+  // or redirect non-admin customers away immediately
   useEffect(() => {
+    if (isAuthChecking) return;
+    if (currentUser && !storeIsAdmin) {
+      navigateTo('account');
+      return;
+    }
     if (
-      !isAuthChecking &&
       storeIsAdmin &&
       currentUser?.role === 'admin' &&
       currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()
@@ -195,13 +193,11 @@ export const AdminLoginView: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(serviceRoleKeyInput.trim() ? { 'x-service-role-key': serviceRoleKeyInput.trim() } : {}),
         },
         body: JSON.stringify({
           email: TARGET_ADMIN_EMAIL,
           password: seedPasswordInput,
-          fullName: 'Abiodun Ajayi',
-          serviceRoleKey: serviceRoleKeyInput.trim() || undefined,
+          fullName: 'Engr. Abiodun Ajayi',
         }),
       });
 
@@ -245,6 +241,23 @@ export const AdminLoginView: React.FC = () => {
       <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 bg-white">
         <div className="w-8 h-8 border-2 border-[#16a34a] border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm text-slate-500">Verifying administrator session...</p>
+      </div>
+    );
+  }
+
+  if (currentUser && !storeIsAdmin) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 bg-white text-center space-y-3">
+        <p className="text-base font-bold text-rose-700">Access Denied</p>
+        <p className="text-xs text-slate-500 max-w-sm">
+          Administrator portals are restricted. Redirecting you to your customer dashboard...
+        </p>
+        <button
+          onClick={() => navigateTo('account')}
+          className="px-5 py-2 rounded-full bg-[#0047AB] text-white text-xs font-bold cursor-pointer"
+        >
+          Go to My Account
+        </button>
       </div>
     );
   }
@@ -512,17 +525,8 @@ export const AdminLoginView: React.FC = () => {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                Service Role Key (Optional if set in server env)
-              </label>
-              <input
-                type="password"
-                value={serviceRoleKeyInput}
-                onChange={(e) => setServiceRoleKeyInput(e.target.value)}
-                placeholder="Paste service_role secret from Supabase"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 font-mono focus:outline-none focus:border-emerald-500"
-              />
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+              Uses the server-side <code className="font-mono text-slate-900">SUPABASE_SERVICE_ROLE_KEY</code> environment variable to set server-controlled <code className="font-mono text-emerald-700">app_metadata.role = 'admin'</code>.
             </div>
 
             {seedResult && (

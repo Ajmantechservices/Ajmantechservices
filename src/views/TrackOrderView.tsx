@@ -21,7 +21,6 @@ import {
 import { OrderStatus, Order } from '../types';
 import { OfficialReceiptModal } from '../components/OfficialReceiptModal';
 import { PaymentGatewayModal } from '../components/PaymentGatewayModal';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export const TrackOrderView: React.FC = () => {
   const {
@@ -31,6 +30,7 @@ export const TrackOrderView: React.FC = () => {
     updateOrderPaymentStatus,
     navigationState,
     currentUser,
+    trackOrderSecure,
   } = useStore();
 
   const [orderIdInput, setOrderIdInput] = useState('');
@@ -58,7 +58,7 @@ export const TrackOrderView: React.FC = () => {
 
     setIsSearching(true);
     try {
-      // 2. Check local store orders
+      // 2. Check customer's loaded orders in context (already scoped by RLS to own user_id)
       const candidate = (orders || []).find((o) => {
         const numMatch = Boolean(o.orderNumber && o.orderNumber.toUpperCase() === cleanOrderId);
         const idMatch = Boolean(o.id && o.id.toUpperCase() === cleanOrderId);
@@ -69,80 +69,28 @@ export const TrackOrderView: React.FC = () => {
       if (candidate) {
         const candEmail = (candidate.customer?.email || candidate.customerEmail || '').toLowerCase().trim();
         const candToken = (candidate.id || '').toLowerCase().trim();
-        const candUuid = ((candidate as any).uuid || '').toLowerCase().trim();
+        const candRef = (candidate.paymentReference || '').toLowerCase().trim();
 
         const isEmailMatch = Boolean(candEmail && candEmail === cleanEmail);
-        const isTokenMatch = Boolean(
-          cleanEmail === candToken || (candUuid && cleanEmail === candUuid)
-        );
+        const isTokenMatch = Boolean(cleanEmail === candToken || (candRef && cleanEmail === candRef));
 
         if (isEmailMatch || isTokenMatch) {
           setVerifiedOrder(candidate);
           setErrorMessage(null);
           return true;
         } else {
-          // If only the Order ID is entered without matching the correct corresponding email or token,
-          // display a generic "Please verify your order details" error instead of exposing customer names and live statuses.
           setVerifiedOrder(null);
           setErrorMessage('Please verify your order details');
           return false;
         }
       }
 
-      // 3. Fallback: Check Supabase directly if configured and not found in local memory
-      if (isSupabaseConfigured() && supabase) {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .or(`order_number.ilike.${cleanOrderId},id.eq.${cleanOrderId}`);
-
-        if (!error && data && data.length > 0) {
-          const matchingRow = data.find((row: any) => {
-            const rowEmail = (row.customer_email || row.customer?.email || '').toLowerCase().trim();
-            const rowId = (row.id || '').toLowerCase().trim();
-            return rowEmail === cleanEmail || rowId === cleanEmail;
-          });
-
-          if (matchingRow) {
-            const mappedOrder: Order = {
-              id: matchingRow.id,
-              orderNumber: matchingRow.order_number,
-              receiptNumber: matchingRow.receipt_number,
-              items: matchingRow.items || [],
-              customer: {
-                fullName: matchingRow.customer_name || 'Valued Customer',
-                email: matchingRow.customer_email || '',
-                phone: matchingRow.customer_phone || '',
-                address: matchingRow.delivery_address?.address || '',
-                state: matchingRow.delivery_address?.state || 'Lagos',
-                city: matchingRow.delivery_address?.city || 'Lagos',
-                notes: matchingRow.delivery_notes || '',
-              },
-              customerName: matchingRow.customer_name,
-              customerEmail: matchingRow.customer_email,
-              customerPhone: matchingRow.customer_phone,
-              deliveryAddress: matchingRow.delivery_address,
-              subtotal: Number(matchingRow.total_amount || 0) - Number(matchingRow.delivery_fee || 0),
-              deliveryFee: Number(matchingRow.delivery_fee || 0),
-              discountAmount: 0,
-              total: Number(matchingRow.total_amount || 0),
-              paymentMethod: matchingRow.payment_method || 'bank_transfer',
-              paymentStatus: matchingRow.payment_status || 'pending',
-              status: matchingRow.status || 'placed',
-              trackingHistory: matchingRow.tracking_history || [],
-              createdAt: matchingRow.created_at || new Date().toISOString().split('T')[0],
-              estimatedDelivery: '24-48 Hours from Dispatch',
-            };
-            setVerifiedOrder(mappedOrder);
-            setErrorMessage(null);
-            return true;
-          } else {
-            // Found by Order ID, but email did not match!
-            setVerifiedOrder(null);
-            setErrorMessage('Please verify your order details');
-            return false;
-          }
-        }
+      // 3. Privacy-preserving server RPC lookup (track_order_secure) under strict RLS
+      const rpcMatch = await trackOrderSecure(orderIdToTest.trim(), emailOrTokenToTest.trim());
+      if (rpcMatch) {
+        setVerifiedOrder(rpcMatch);
+        setErrorMessage(null);
+        return true;
       }
 
       // No matching record found

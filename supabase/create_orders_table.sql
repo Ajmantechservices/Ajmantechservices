@@ -1,8 +1,9 @@
--- Safe, additive migration to create the missing public.orders table
+-- Safe, additive migration to create the public.orders table with strict ownership RLS
 -- Does NOT modify, drop, or recreate any existing tables.
 
 CREATE TABLE IF NOT EXISTS public.orders (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   order_number text NOT NULL UNIQUE,
   reference text,
   customer_name text NOT NULL,
@@ -20,34 +21,41 @@ CREATE TABLE IF NOT EXISTS public.orders (
   delivery_notes text,
   tracking_history jsonb DEFAULT '[]'::jsonb,
   service_name text,
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON public.orders(user_id);
 
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'orders' AND policyname = 'Allow public insert on orders'
-  ) THEN
-    CREATE POLICY "Allow public insert on orders"
-      ON public.orders FOR INSERT WITH CHECK (true);
-  END IF;
+DROP POLICY IF EXISTS "Allow public insert on orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow public select on orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow all modifications on orders" ON public.orders;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'orders' AND policyname = 'Allow public select on orders'
-  ) THEN
-    CREATE POLICY "Allow public select on orders"
-      ON public.orders FOR SELECT USING (true);
-  END IF;
+DROP POLICY IF EXISTS "Orders: own or admin select" ON public.orders;
+CREATE POLICY "Orders: own or admin select"
+  ON public.orders FOR SELECT
+  USING (auth.uid() = user_id OR coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin');
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'orders' AND policyname = 'Allow all modifications on orders'
-  ) THEN
-    CREATE POLICY "Allow all modifications on orders"
-      ON public.orders FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-END $$;
+DROP POLICY IF EXISTS "Orders: authenticated own or guest insert" ON public.orders;
+CREATE POLICY "Orders: authenticated own or guest insert"
+  ON public.orders FOR INSERT
+  WITH CHECK (
+    coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin'
+    OR (auth.uid() IS NOT NULL AND user_id = auth.uid())
+    OR (auth.uid() IS NULL AND user_id IS NULL)
+  );
+
+DROP POLICY IF EXISTS "Orders: admin update" ON public.orders;
+CREATE POLICY "Orders: admin update"
+  ON public.orders FOR UPDATE
+  USING (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin')
+  WITH CHECK (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin');
+
+DROP POLICY IF EXISTS "Orders: admin delete" ON public.orders;
+CREATE POLICY "Orders: admin delete"
+  ON public.orders FOR DELETE
+  USING (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin');

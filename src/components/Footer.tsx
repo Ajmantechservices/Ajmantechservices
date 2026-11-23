@@ -25,7 +25,7 @@ import { ViewState } from '../types';
 import { MAIN_CATEGORIES } from '../data/categories';
 
 export const Footer: React.FC = () => {
-  const { navigateTo, storeSettings, openWhatsApp, categories } = useStore();
+  const { navigateTo, storeSettings, openWhatsApp, categories, isAdmin } = useStore();
 
   const handleCategoryClick = (catSlug: string) => {
     navigateTo('shop', { categorySlug: catSlug });
@@ -329,15 +329,17 @@ export const Footer: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span>© {new Date().getFullYear()} AjmanTech Services Nigeria Ltd. All Rights Reserved.</span>
             <span className="text-amber-300 font-medium hidden sm:inline">• “Let There Be Light”</span>
-            <button
-              id="footer-admin-lock-btn"
-              onClick={() => navigateTo('admin')}
-              className="opacity-20 hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-amber-400 cursor-pointer inline-flex items-center ml-0.5"
-              title="Admin Access"
-              aria-label="Admin Portal"
-            >
-              <Lock className="w-3.5 h-3.5" />
-            </button>
+            {isAdmin && (
+              <button
+                id="footer-admin-lock-btn"
+                onClick={() => navigateTo('admin')}
+                className="opacity-60 hover:opacity-100 transition-opacity p-1 text-amber-300 hover:text-amber-400 cursor-pointer inline-flex items-center ml-0.5"
+                title="Admin Access"
+                aria-label="Admin Portal"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-3 text-blue-200 text-[11px]">

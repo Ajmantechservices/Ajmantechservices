@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import {
   ShieldCheck,
@@ -18,7 +18,7 @@ import {
 import { PaymentMethod } from '../types';
 import { PaymentGatewayModal } from '../components/PaymentGatewayModal';
 import PaystackPop from '@paystack/inline-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, generateUuid } from '../lib/supabase';
 import { sendOrderConfirmationEmail } from '../services/emailService';
 
 export const CheckoutView: React.FC = () => {
@@ -29,6 +29,7 @@ export const CheckoutView: React.FC = () => {
     createOrder,
     navigateTo,
     currentUser,
+    customerAddresses,
     storeSettings,
     showToast,
     openWhatsApp,
@@ -44,6 +45,21 @@ export const CheckoutView: React.FC = () => {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [includeInstallation, setIncludeInstallation] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card');
+
+  useEffect(() => {
+    if (currentUser) {
+      setFullName((prev) => prev || currentUser.fullName || '');
+      setEmail((prev) => prev || currentUser.email || '');
+      setPhone((prev) => prev || currentUser.phone || '');
+    }
+    const defaultAddr =
+      (customerAddresses || []).find((a) => a.isDefault) || (customerAddresses || [])[0] || currentUser?.defaultAddress;
+    if (defaultAddr) {
+      setState((prev) => (prev === 'Lagos' && defaultAddr.state ? defaultAddr.state : prev));
+      setCity((prev) => prev || defaultAddr.city || '');
+      setStreetAddress((prev) => prev || defaultAddr.streetAddress || (defaultAddr as any).address || '');
+    }
+  }, [currentUser, customerAddresses]);
 
   // Promo Code
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -128,7 +144,7 @@ export const CheckoutView: React.FC = () => {
     setIsSubmitting(true);
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const orderNumber = `AJM-${new Date().getFullYear()}-${randomNum}`;
-    const orderId = `ord-${Date.now()}-${randomNum}`;
+    const orderId = generateUuid();
     const orderItems = cart.map((c) => ({
       productId: c.product.id,
       title: c.product.name,
@@ -146,6 +162,7 @@ export const CheckoutView: React.FC = () => {
         const { error: dbError } = await supabase.from('orders').insert([
           {
             id: orderId,
+            user_id: currentUser?.id || null,
             order_number: orderNumber,
             reference: verifiedReference,
             customer_name: fullName,
@@ -196,6 +213,7 @@ export const CheckoutView: React.FC = () => {
       // Sync with client application store state
       const newOrder = createOrder({
         id: orderId,
+        userId: currentUser?.id || null,
         orderNumber,
         customerName: fullName,
         customerEmail: email,
@@ -323,11 +341,11 @@ export const CheckoutView: React.FC = () => {
       return;
     }
 
-    // Offline Bank Transfer:
-    // Notice: Database insertion in Supabase is ONLY performed for verified Paystack payments
+    // Bank Transfer Order: persisted to Supabase with status 'placed' and payment_status 'pending' for admin verification
     setIsSubmitting(true);
     try {
       const newOrder = createOrder({
+        userId: currentUser?.id || null,
         customerName: fullName,
         customerEmail: email || 'customer@ajmantech.ng',
         customerPhone: phone,
@@ -345,7 +363,6 @@ export const CheckoutView: React.FC = () => {
         appliedPromoCode: appliedPromo?.code,
         notes: deliveryNotes,
         installationRequested: includeInstallation,
-        skipDatabaseSync: true, // Supabase orders table only stores verified Paystack payments
       });
 
       navigateTo('order-success', {
@@ -415,6 +432,32 @@ export const CheckoutView: React.FC = () => {
                 Delivery Details
               </h2>
             </div>
+
+            {currentUser && customerAddresses && customerAddresses.length > 0 && (
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <span className="block text-[11px] font-bold text-[#002D72] uppercase tracking-wider">
+                  Saved Delivery Addresses
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {customerAddresses.map((addr) => (
+                    <button
+                      key={addr.id}
+                      type="button"
+                      onClick={() => {
+                        setState(addr.state || 'Lagos');
+                        setCity(addr.city || '');
+                        setStreetAddress(addr.streetAddress || addr.fullAddress || '');
+                        if (addr.phone) setPhone(addr.phone);
+                        if (addr.fullName) setFullName(addr.fullName);
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-white hover:bg-blue-50 border border-slate-200 hover:border-[#0047AB] text-[11px] font-semibold text-slate-700 cursor-pointer transition-colors"
+                    >
+                      {addr.title || 'Saved'} • {addr.city}, {addr.state}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

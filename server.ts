@@ -14,6 +14,15 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[AjmanTech Server] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+const escapeHtml = (value: unknown): string => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -21,13 +30,25 @@ async function startServer() {
   // Body parsing & JSON
   app.use(express.json());
 
-  // CORS middleware
+  // Same-origin / safe CORS middleware (never grant wildcard CORS to authenticated origins)
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const requestOrigin = req.headers.origin;
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    if (requestOrigin && host) {
+      try {
+        const parsedOrigin = new URL(requestOrigin);
+        if (parsedOrigin.host === String(host)) {
+          res.header('Access-Control-Allow-Origin', requestOrigin);
+          res.header('Vary', 'Origin');
+        }
+      } catch {
+        // Ignore malformed origin header
+      }
+    }
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header(
       'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-service-role-key'
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization'
     );
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -44,19 +65,17 @@ async function startServer() {
     });
   });
 
-  // 2. Admin Seeding Endpoint (/api/seed-admin and /api/init-admin)
+  // 2. Admin Seeding Endpoint (POST only, strictly uses server-side environment secrets)
   const handleSeedAdmin = async (req: express.Request, res: express.Response) => {
     try {
       const serviceRoleKey =
         process.env.SUPABASE_SERVICE_ROLE_KEY ||
         process.env.SUPABASE_KEY ||
-        process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
-        (req.headers['x-service-role-key'] as string) ||
-        req.body?.serviceRoleKey;
+        '';
 
       if (!serviceRoleKey) {
         return res.status(500).json({
-          error: 'Missing SUPABASE_SERVICE_ROLE_KEY environment variable',
+          error: 'Missing SUPABASE_SERVICE_ROLE_KEY environment variable on server',
         });
       }
 
@@ -71,7 +90,6 @@ async function startServer() {
         });
       }
       const supabaseUrl =
-        (req.body?.supabaseUrl as string) ||
         process.env.VITE_SUPABASE_URL ||
         process.env.NEXT_PUBLIC_SUPABASE_URL ||
         process.env.SUPABASE_URL ||
@@ -82,7 +100,7 @@ async function startServer() {
         serviceRoleKey,
         email,
         password,
-        fullName: req.body?.fullName || 'Joshua Ajayi',
+        fullName: typeof req.body?.fullName === 'string' ? req.body.fullName : 'Joshua Ajayi',
       });
 
       if (result.success) {
@@ -104,23 +122,21 @@ async function startServer() {
   };
 
   app.post('/api/seed-admin', handleSeedAdmin);
-  app.get('/api/seed-admin', handleSeedAdmin);
   app.post('/api/init-admin', handleSeedAdmin);
-  app.get('/api/init-admin', handleSeedAdmin);
 
   // 3. Automated Order Confirmation Email Endpoint (/api/send-order-email)
   app.post('/api/send-order-email', async (req: express.Request, res: express.Response) => {
     try {
       const body = req.body || {};
-      const orderNumber = body.orderNumber || body.orderId || body.id;
-      const customerEmail = body.customerEmail || body.email;
-      const customerName = body.customerName || body.name || 'Valued Customer';
-      const customerPhone = body.customerPhone || body.phone;
+      const orderNumber = String(body.orderNumber || body.orderId || body.id || '').trim();
+      const customerEmail = String(body.customerEmail || body.email || '').trim();
+      const customerName = String(body.customerName || body.name || 'Valued Customer').trim();
+      const customerPhone = String(body.customerPhone || body.phone || 'N/A').trim();
       const deliveryAddress = body.deliveryAddress || body.address;
       const items = body.items || [];
       const totalAmount = body.totalAmount || body.amount || 0;
       const deliveryFee = body.deliveryFee || 0;
-      const paymentReference = body.paymentReference || body.reference;
+      const paymentReference = String(body.paymentReference || body.reference || 'VERIFIED').trim();
       const paidAt = body.paidAt;
 
       if (!customerEmail || !orderNumber) {
@@ -137,20 +153,26 @@ async function startServer() {
             deliveryAddress?.state,
           ].filter(Boolean).join(', ') || 'Lagos, Nigeria';
 
+      const safeOrderNumber = escapeHtml(orderNumber);
+      const safeCustomerName = escapeHtml(customerName || 'Valued Customer');
+      const safeCustomerPhone = escapeHtml(customerPhone || 'N/A');
+      const safeAddressText = escapeHtml(addressText);
+      const safePaymentReference = escapeHtml(paymentReference || 'N/A');
+
       const itemsHtml = Array.isArray(items) && items.length > 0
         ? items.map((it: any) => `
           <tr style="border-bottom: 1px solid #e2e8f0;">
             <td style="padding: 12px 8px; font-size: 13px; color: #1e293b;">
-              <strong>${it.productName || it.title || it.name || 'Electrical Product'}</strong>
-              ${it.variant || it.selectedVariant ? `<div style="font-size: 11px; color: #64748b;">Variant: ${it.variant || it.selectedVariant}</div>` : ''}
+              <strong>${escapeHtml(it.productName || it.title || it.name || 'Electrical Product')}</strong>
+              ${it.variant || it.selectedVariant ? `<div style="font-size: 11px; color: #64748b;">Variant: ${escapeHtml(it.variant || it.selectedVariant)}</div>` : ''}
             </td>
-            <td style="padding: 12px 8px; font-size: 13px; text-align: center; color: #475569;">x${it.quantity || 1}</td>
+            <td style="padding: 12px 8px; font-size: 13px; text-align: center; color: #475569;">x${Number(it.quantity || 1)}</td>
             <td style="padding: 12px 8px; font-size: 13px; text-align: right; font-weight: 600; color: #002D72;">
               ₦${(Number(it.price || 0) * Number(it.quantity || 1)).toLocaleString('en-NG')}
             </td>
           </tr>
         `).join('')
-        : `<tr><td colspan="3" style="padding: 12px; font-size: 13px; color: #64748b;">Order details recorded with reference ${paymentReference || 'N/A'}</td></tr>`;
+        : `<tr><td colspan="3" style="padding: 12px; font-size: 13px; color: #64748b;">Order details recorded with reference ${safePaymentReference}</td></tr>`;
 
       const emailHtml = `
         <!DOCTYPE html>
@@ -178,7 +200,7 @@ async function startServer() {
                       <div style="display: inline-block; background-color: #16a34a; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 12px; border-radius: 12px; margin-bottom: 8px;">
                         ✓ Payment Confirmed via Paystack
                       </div>
-                      <h2 style="margin: 4px 0 0; font-size: 18px; color: #166534; font-weight: 700;">Thank You for Your Order, ${customerName || 'Valued Customer'}!</h2>
+                      <h2 style="margin: 4px 0 0; font-size: 18px; color: #166534; font-weight: 700;">Thank You for Your Order, ${safeCustomerName}!</h2>
                       <p style="margin: 4px 0 0; font-size: 13px; color: #15803d;">Your payment has been approved and your order is being tested and packed.</p>
                     </td>
                   </tr>
@@ -189,9 +211,9 @@ async function startServer() {
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="font-size: 13px; color: #64748b; line-height: 1.5;">
-                            <div>Order Reference: <strong style="color: #002D72; font-family: monospace;">#${orderNumber}</strong></div>
-                            <div>Paystack Ref: <strong style="color: #0f172a; font-family: monospace;">${paymentReference || 'VERIFIED'}</strong></div>
-                            <div>Date: <strong>${paidAt ? new Date(paidAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}</strong></div>
+                            <div>Order Reference: <strong style="color: #002D72; font-family: monospace;">#${safeOrderNumber}</strong></div>
+                            <div>Paystack Ref: <strong style="color: #0f172a; font-family: monospace;">${safePaymentReference}</strong></div>
+                            <div>Date: <strong>${escapeHtml(paidAt ? new Date(paidAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB'))}</strong></div>
                           </td>
                           <td align="right" style="font-size: 13px; color: #64748b; line-height: 1.5;">
                             <div>Payment Method: <strong style="color: #16a34a;">Paystack Card / Gateway</strong></div>
@@ -242,8 +264,8 @@ async function startServer() {
                     <td style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
                       <h4 style="margin: 0 0 6px; font-size: 13px; color: #002D72; text-transform: uppercase; letter-spacing: 0.5px;">Delivery Destination</h4>
                       <p style="margin: 0; font-size: 13px; color: #334155; line-height: 1.4;">
-                        ${addressText}<br />
-                        Recipient Contact: <strong>${customerPhone || 'N/A'}</strong>
+                        ${safeAddressText}<br />
+                        Recipient Contact: <strong>${safeCustomerPhone}</strong>
                       </p>
                     </td>
                   </tr>
@@ -254,7 +276,7 @@ async function startServer() {
                       <p style="margin: 0 0 16px; font-size: 13px; color: #475569;">
                         You can track live dispatch coordinates anytime using your Order Reference and Email address.
                       </p>
-                      <a href="${process.env.APP_URL || 'http://localhost:3000'}/track?ref=${orderNumber}&email=${encodeURIComponent(customerEmail)}" style="display: inline-block; background-color: #0047AB; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; padding: 12px 24px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,71,171,0.25);">
+                      <a href="${escapeHtml(process.env.APP_URL || 'http://localhost:3000')}/track?ref=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(customerEmail)}" style="display: inline-block; background-color: #0047AB; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; padding: 12px 24px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,71,171,0.25);">
                         Track Your Order Live
                       </a>
                     </td>

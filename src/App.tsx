@@ -29,7 +29,7 @@ import { DashboardMenuView } from './views/DashboardMenuView';
 import AdminProductsPage from '../app/admin/products/page';
 
 const MainRouter: React.FC = () => {
-  const { currentView, isAdmin } = useStore();
+  const { currentView, isAdmin, currentUser, isAuthChecking } = useStore();
 
   // Scroll to top whenever view changes
   useEffect(() => {
@@ -37,6 +37,27 @@ const MainRouter: React.FC = () => {
   }, [currentView]);
 
   const renderView = () => {
+    const isAdminRoute =
+      currentView === 'admin' ||
+      currentView === 'admin-login' ||
+      currentView === 'admin-signup' ||
+      currentView === 'admin-dashboard' ||
+      currentView === 'admin-products';
+
+    if (isAuthChecking && (isAdminRoute || currentView === 'wishlist' || currentView === 'account')) {
+      return (
+        <div className="min-h-[60vh] flex flex-col items-center justify-center px-4">
+          <div className="w-8 h-8 border-2 border-[#0047AB] border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs font-semibold text-slate-500">Verifying session access...</p>
+        </div>
+      );
+    }
+
+    // Logged-in non-admin customers must never access any admin page
+    if (currentUser && !isAdmin && isAdminRoute) {
+      return <CustomerAccountView />;
+    }
+
     switch (currentView) {
       case 'home':
         return <HomeView />;
@@ -63,11 +84,11 @@ const MainRouter: React.FC = () => {
       case 'account':
         return <CustomerAccountView />;
       case 'wishlist':
-        return <WishlistView />;
+        return currentUser ? <WishlistView /> : <CustomerAccountView />;
       case 'services-portal':
         return <DashboardMenuView />;
       case 'admin-login':
-        return <AdminLoginView />;
+        return isAdmin ? <AdminDashboardView /> : <AdminLoginView />;
       case 'admin-signup':
         return <AdminSignupView />;
       case 'admin-dashboard':

@@ -55,6 +55,9 @@ import {
   ArrowUp,
   ArrowDown,
   Wallet,
+  Users,
+  Heart,
+  XCircle,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -97,6 +100,7 @@ import {
 type AdminTab =
   | 'products'
   | 'orders'
+  | 'customers'
   | 'overview'
   | 'categories'
   | 'gallery'
@@ -126,9 +130,12 @@ export const AdminDashboardView: React.FC = () => {
     deleteMultipleProductGalleryItems,
     refreshCatalog,
     updateOrderStatus,
+    rejectOrder,
     updateOrderPaymentStatus,
     updateServiceRequestStatus,
     updateStoreSettings,
+    adminCustomers,
+    refreshAdminCustomerData,
     activityLogs,
     addActivityLog,
     clearActivityLogs,
@@ -168,7 +175,16 @@ export const AdminDashboardView: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [orderSearch, setOrderSearch] = useState('');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'processing' | 'shipped' | 'delivered'>('all');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'>('all');
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  // Service / Installation Appointment Scheduler state
+  const [schedulingRequestId, setSchedulingRequestId] = useState<string | null>(null);
+  const [schedDate, setSchedDate] = useState('');
+  const [schedTimeSlot, setSchedTimeSlot] = useState('Morning (9:00 AM - 12:00 PM)');
+  const [schedTechnician, setSchedTechnician] = useState('Engr. Abiodun Ajayi');
+  const [schedStatus, setSchedStatus] = useState<'new' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled'>('scheduled');
+  const [schedNotes, setSchedNotes] = useState('');
 
   // Modal for Viewing Order Details / Printable Receipt
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
@@ -267,9 +283,13 @@ export const AdminDashboardView: React.FC = () => {
       if (!isMounted) return;
 
       if (!sessionCheck.isAdmin || !isAdmin) {
-        await adminLogout();
-        showToast('Please sign in with verified administrator credentials.', 'info');
-        navigateTo('admin-login');
+        if (currentUser && !isAdmin) {
+          navigateTo('account');
+        } else {
+          await adminLogout();
+          showToast('Please sign in with verified administrator credentials.', 'info');
+          navigateTo('admin-login');
+        }
       }
     };
 
@@ -278,7 +298,7 @@ export const AdminDashboardView: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin, navigateTo, showToast, adminLogout]);
+  }, [isAdmin, currentUser, navigateTo, showToast, adminLogout]);
 
   // Load counts
   const loadSupabaseTableCounts = async () => {
@@ -635,6 +655,8 @@ export const AdminDashboardView: React.FC = () => {
         if (order.status !== 'shipped' && order.status !== 'dispatched') return false;
       } else if (orderStatusFilter === 'delivered') {
         if (order.status !== 'delivered') return false;
+      } else if (orderStatusFilter === 'cancelled') {
+        if (order.status !== 'cancelled') return false;
       }
 
       // Search filter
@@ -1070,6 +1092,23 @@ export const AdminDashboardView: React.FC = () => {
             >
               <Wrench className="w-4 h-4" />
               <span>Services ({serviceRequests.length})</span>
+            </button>
+
+            {/* Tab: Customers, Addresses & Wishlists */}
+            <button
+              id="top-nav-customers-btn"
+              onClick={() => {
+                setActiveTab('customers');
+                void refreshAdminCustomerData();
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'customers'
+                  ? 'bg-[#002D72] text-white shadow-sm'
+                  : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#002D72]'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Customers ({adminCustomers.length})</span>
             </button>
 
             {/* Tab 5: Categories */}
@@ -1558,6 +1597,16 @@ export const AdminDashboardView: React.FC = () => {
                 >
                   Delivered
                 </button>
+                <button
+                  onClick={() => setOrderStatusFilter('cancelled')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                    orderStatusFilter === 'cancelled'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  }`}
+                >
+                  Rejected / Cancelled
+                </button>
               </div>
             </div>
 
@@ -1575,17 +1624,18 @@ export const AdminDashboardView: React.FC = () => {
                   const isApproved = order.status === 'processing' || order.status === 'confirmed';
                   const isShipped = order.status === 'shipped' || order.status === 'dispatched';
                   const isDelivered = order.status === 'delivered';
+                  const isCancelled = order.status === 'cancelled';
 
                   return (
                     <div
                       key={order.id}
                       className={`bg-white border rounded-2xl p-5 sm:p-6 shadow-sm transition-all hover:shadow-md ${
-                        isPending ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200'
+                        isPending ? 'border-amber-300 ring-2 ring-amber-100' : isCancelled ? 'border-rose-200' : 'border-slate-200'
                       }`}
                     >
                       {/* Top Order Row */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <span className="font-mono font-black text-sm text-[#002D72] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
                             #{order.orderNumber}
                           </span>
@@ -1610,6 +1660,11 @@ export const AdminDashboardView: React.FC = () => {
                           {isDelivered && (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-800">
                               ✓ Delivered
+                            </span>
+                          )}
+                          {isCancelled && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+                              ✕ Rejected / Cancelled
                             </span>
                           )}
                         </div>
@@ -1649,8 +1704,9 @@ export const AdminDashboardView: React.FC = () => {
                           <div className="flex items-start gap-1.5 text-slate-500 pt-1 border-t border-slate-200/60">
                             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                             <span>
-                              {order.customer?.address || 'Showroom pick up'}, {order.customer?.city || ''}{' '}
-                              {order.customer?.state ? `(${order.customer.state})` : ''}
+                              {order.deliveryAddress?.streetAddress || order.customer?.address || 'Showroom pick up'},{' '}
+                              {order.deliveryAddress?.city || order.customer?.city || ''}{' '}
+                              {(order.deliveryAddress?.state || order.customer?.state) ? `(${order.deliveryAddress?.state || order.customer?.state})` : ''}
                             </span>
                           </div>
                           {order.paymentReference && (
@@ -1717,8 +1773,8 @@ export const AdminDashboardView: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* Status Change & Approval Button */}
-                        <div className="flex items-center gap-2">
+                        {/* Status Change, Approval & Rejection Buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
                           {isPending && (
                             <button
                               id={`approve-order-btn-${order.id}`}
@@ -1730,6 +1786,17 @@ export const AdminDashboardView: React.FC = () => {
                             </button>
                           )}
 
+                          {!isCancelled && !isDelivered && (
+                            <button
+                              id={`reject-order-btn-${order.id}`}
+                              onClick={() => rejectOrder(order.id, 'Rejected by administrator.')}
+                              className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 border border-rose-200 transition-all cursor-pointer"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>Reject Order</span>
+                            </button>
+                          )}
+
                           <select
                             value={order.status}
                             onChange={(e) => updateOrderStatus(order.id, e.target.value as OrderStatus)}
@@ -1737,11 +1804,12 @@ export const AdminDashboardView: React.FC = () => {
                           >
                             <option value="pending">Pending</option>
                             <option value="placed">Placed (Awaiting Review)</option>
+                            <option value="confirmed">Confirmed</option>
                             <option value="processing">Processing (Approved)</option>
                             <option value="shipped">Shipped</option>
                             <option value="out_for_delivery">Out for Delivery</option>
                             <option value="delivered">Delivered</option>
-                            <option value="cancelled">Cancelled</option>
+                            <option value="cancelled">Cancelled / Rejected</option>
                           </select>
                         </div>
                       </div>
@@ -2412,7 +2480,7 @@ export const AdminDashboardView: React.FC = () => {
         )}
 
         {/* ============================================================ */}
-        {/* TAB 6: SERVICE INQUIRIES & TICKETS                            */}
+        {/* TAB 6: SERVICE INQUIRIES & INSTALLATION APPOINTMENTS          */}
         {/* ============================================================ */}
         {activeTab === 'services' && (
           <div className="space-y-6 animate-fade-in">
@@ -2421,48 +2489,338 @@ export const AdminDashboardView: React.FC = () => {
                 Engineering & Installation Requests
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Manage solar audits, home automation consultations, and certified wiring inquiries.
+                Review all customer installation inquiries, assign engineers, and schedule installation appointments.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {serviceRequests.map((req) => (
-                <div key={req.id} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[#002D72] font-bold text-xs bg-blue-50 px-2 py-0.5 rounded">
-                      {req.ticketNumber}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
-                      {req.status}
-                    </span>
-                  </div>
+            {serviceRequests.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
+                <Wrench className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-700">No installation requests recorded yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {serviceRequests.map((req) => {
+                  const isSchedulingThis = schedulingRequestId === req.id;
+                  return (
+                    <div key={req.id} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[#002D72] font-bold text-xs bg-blue-50 px-2.5 py-0.5 rounded">
+                          #{req.ticketNumber}
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            req.status === 'completed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : req.status === 'scheduled' || req.status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-800'
+                              : req.status === 'cancelled'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {req.status.replace('_', ' ')}
+                        </span>
+                      </div>
 
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-sm">{req.serviceName}</h4>
-                    <div className="text-xs text-slate-600 mt-1 font-medium">
-                      {req.customerName} • {req.phone}
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">{req.serviceName}</h4>
+                        <div className="text-xs text-slate-600 mt-1 font-medium">
+                          {req.customerName} • {req.phone} {req.email ? `• ${req.email}` : ''}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          <strong>Appointment:</strong> {req.preferredDate || 'TBD'} ({req.preferredTimeSlot || 'TBD'})
+                          {req.assignedTechnician ? ` • Tech: ${req.assignedTechnician}` : ''}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                          {req.description}
+                        </p>
+                        {req.internalNotes && (
+                          <p className="text-[11px] text-blue-800 mt-2 bg-blue-50 p-2.5 rounded-xl border border-blue-100">
+                            <strong>Admin Note:</strong> {req.internalNotes}
+                          </p>
+                        )}
+                      </div>
+
+                      {isSchedulingThis && (
+                        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                Appointment Date
+                              </label>
+                              <input
+                                type="date"
+                                value={schedDate}
+                                onChange={(e) => setSchedDate(e.target.value)}
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                Time Slot
+                              </label>
+                              <select
+                                value={schedTimeSlot}
+                                onChange={(e) => setSchedTimeSlot(e.target.value)}
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
+                              >
+                                <option value="Morning (9:00 AM - 12:00 PM)">Morning (9:00 AM - 12:00 PM)</option>
+                                <option value="Afternoon (1:00 PM - 4:00 PM)">Afternoon (1:00 PM - 4:00 PM)</option>
+                                <option value="Evening (4:00 PM - 7:00 PM)">Evening (4:00 PM - 7:00 PM)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                Assigned Technician
+                              </label>
+                              <input
+                                type="text"
+                                value={schedTechnician}
+                                onChange={(e) => setSchedTechnician(e.target.value)}
+                                placeholder="e.g. Engr. Abiodun Ajayi"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                Ticket Status
+                              </label>
+                              <select
+                                value={schedStatus}
+                                onChange={(e) => setSchedStatus(e.target.value as any)}
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
+                              >
+                                <option value="new">New</option>
+                                <option value="scheduled">Scheduled</option>
+                                <option value="in_progress">In-Progress</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                              Customer / Technician Notes
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={schedNotes}
+                              onChange={(e) => setSchedNotes(e.target.value)}
+                              placeholder="Site inspection details or arrival instructions..."
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
+                            />
+                          </div>
+
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSchedulingRequestId(null)}
+                              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateServiceRequestStatus(
+                                  req.id,
+                                  schedStatus,
+                                  schedNotes,
+                                  schedTechnician,
+                                  schedDate,
+                                  schedTimeSlot
+                                );
+                                setSchedulingRequestId(null);
+                              }}
+                              className="px-3.5 py-1.5 rounded-lg bg-[#002D72] text-white font-bold cursor-pointer"
+                            >
+                              Save Appointment
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+                        <span>{req.address}, {req.city} ({req.state})</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSchedulingRequestId(isSchedulingThis ? null : req.id);
+                              setSchedDate(req.preferredDate || new Date().toISOString().split('T')[0]);
+                              setSchedTimeSlot(req.preferredTimeSlot || 'Morning (9:00 AM - 12:00 PM)');
+                              setSchedTechnician(req.assignedTechnician || 'Engr. Abiodun Ajayi');
+                              setSchedStatus((req.status as any) || 'scheduled');
+                              setSchedNotes(req.internalNotes || '');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#002D72] font-bold cursor-pointer border border-blue-100 flex items-center gap-1"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>Schedule</span>
+                          </button>
+
+                          <select
+                            value={req.status}
+                            onChange={(e) => updateServiceRequestStatus(req.id, e.target.value as any)}
+                            className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800"
+                          >
+                            <option value="new">New</option>
+                            <option value="pending">Pending</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="in_progress">In-Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-500 mt-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      {req.description}
-                    </p>
-                  </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
-                    <span>{req.address}, {req.city}</span>
-                    <select
-                      value={req.status}
-                      onChange={(e) => updateServiceRequestStatus(req.id, e.target.value as any)}
-                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800"
-                    >
-                      <option value="new">New</option>
-                      <option value="scheduled">Scheduled</option>
-                      <option value="in_progress">In-Progress</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                  </div>
-                </div>
-              ))}
+        {/* ============================================================ */}
+        {/* TAB 10: CUSTOMERS, DELIVERY ADDRESSES & WISHLISTS             */}
+        {/* ============================================================ */}
+        {activeTab === 'customers' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                  Customer Accounts, Delivery Addresses & Wishlists
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Inspect customer delivery addresses for order fulfillment and view customer saved wishlist items.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshAdminCustomerData()}
+                className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#002D72] text-xs font-bold border border-blue-200 flex items-center gap-1.5 cursor-pointer self-start"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh Customers</span>
+              </button>
             </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+              <div className="relative max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search customers by name, email, or phone..."
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
+            </div>
+
+            {adminCustomers.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 space-y-2">
+                <Users className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="text-sm font-semibold text-slate-700">No customer profiles loaded yet.</p>
+                <p className="text-xs text-slate-400">
+                  Registered customers, their saved delivery addresses, and wishlists from Supabase will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {adminCustomers
+                  .filter((c) => {
+                    if (!customerSearch.trim()) return true;
+                    const q = customerSearch.toLowerCase();
+                    return (
+                      c.fullName.toLowerCase().includes(q) ||
+                      c.email.toLowerCase().includes(q) ||
+                      (c.phone || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map((cust) => {
+                    const wishItems = products.filter((p) => cust.wishlistProductIds.includes(p.id));
+                    return (
+                      <div key={cust.id} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
+                        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div>
+                            <h4 className="font-bold text-slate-900 text-sm">{cust.fullName}</h4>
+                            <p className="text-xs text-slate-500">{cust.email}</p>
+                            {cust.phone && <p className="text-[11px] font-mono text-slate-500">{cust.phone}</p>}
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full bg-blue-50 text-[#002D72] text-[10px] font-bold">
+                            {cust.ordersCount} Orders
+                          </span>
+                        </div>
+
+                        {/* Delivery Addresses for Fulfillment */}
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-[#002D72]" />
+                            <span>Saved Delivery Addresses ({cust.addresses.length})</span>
+                          </div>
+                          {cust.addresses.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic">No saved delivery addresses.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {cust.addresses.map((addr) => (
+                                <div key={addr.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 text-xs">
+                                  <div className="flex items-center justify-between font-semibold text-slate-800">
+                                    <span>{addr.title || 'Address'} • {addr.fullName || cust.fullName}</span>
+                                    {addr.isDefault && (
+                                      <span className="text-[9px] bg-blue-100 text-[#002D72] px-2 py-0.5 rounded-full font-bold">
+                                        Default
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-slate-600">{addr.streetAddress || addr.fullAddress}, {addr.city}, {addr.state}</p>
+                                  {addr.phone && <p className="text-[11px] font-mono text-slate-500">{addr.phone}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Saved Wishlist Items */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <Heart className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Customer Wishlist ({cust.wishlistProductIds.length})</span>
+                          </div>
+                          {cust.wishlistProductIds.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic">No wishlist products saved.</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {wishItems.length > 0
+                                ? wishItems.map((wp) => (
+                                    <span
+                                      key={wp.id}
+                                      className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-100 text-[11px] font-medium"
+                                    >
+                                      {wp.name}
+                                    </span>
+                                  ))
+                                : cust.wishlistProductIds.map((pid) => (
+                                    <span
+                                      key={pid}
+                                      className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-mono"
+                                    >
+                                      {pid}
+                                    </span>
+                                  ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         )}
 

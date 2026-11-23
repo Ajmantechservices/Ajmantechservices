@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import {
   X,
@@ -26,6 +26,7 @@ export const ServiceBookingModal: React.FC = () => {
     createServiceRequest,
     currentUser,
     openWhatsApp,
+    showToast,
   } = useStore();
 
   const [serviceId, setServiceId] = useState<string>(() => {
@@ -54,6 +55,14 @@ export const ServiceBookingModal: React.FC = () => {
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [submittedTicket, setSubmittedTicket] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (currentUser) {
+      if (!customerName && currentUser.fullName) setCustomerName(currentUser.fullName);
+      if (!email && currentUser.email) setEmail(currentUser.email);
+      if (!phone && currentUser.phone) setPhone(currentUser.phone);
+    }
+  }, [currentUser]);
+
   if (!isServiceModalOpen) return null;
 
   const selectedServiceObj = services.find((s) => s.id === serviceId) || services[0];
@@ -69,11 +78,12 @@ export const ServiceBookingModal: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !phone || !address || !description) {
-      alert('Please fill in your name, phone, address, and job description.');
+      showToast('Please fill in your name, phone, address, and job description.', 'error');
       return;
     }
 
     const req = createServiceRequest({
+      userId: currentUser?.id || null,
       serviceId: selectedServiceObj.id,
       serviceName: selectedServiceObj.name,
       customerName,

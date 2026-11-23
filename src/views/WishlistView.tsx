@@ -4,7 +4,27 @@ import { ProductCard } from '../components/ProductCard';
 import { Heart, ShoppingBag, ArrowRight } from 'lucide-react';
 
 export const WishlistView: React.FC = () => {
-  const { wishlist, products, navigateTo, addToCart, formatNaira } = useStore();
+  const { wishlist, products, navigateTo, addToCart, currentUser } = useStore();
+
+  if (!currentUser) {
+    return (
+      <div id="wishlist-auth-required" className="max-w-lg mx-auto px-4 py-16 text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
+          <Heart className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-900">Sign In to View Your Wishlist</h2>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Your saved wishlist items are private to your account. Please sign in to access or manage your saved products.
+        </p>
+        <button
+          onClick={() => navigateTo('account')}
+          className="py-2.5 px-6 rounded-full bg-[#0047AB] hover:bg-[#002D72] text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
+        >
+          Sign In / Create Account
+        </button>
+      </div>
+    );
+  }
 
   const wishProductIds = new Set(
     (wishlist || []).map((w: any) => (typeof w === 'string' ? w : w?.productId))

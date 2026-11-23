@@ -77,7 +77,8 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
 
     // 1. Check if user already exists in auth.users
     let existingUserId: string | null = null;
-    let existingMetadata: any = {};
+    let existingUserMetadata: any = {};
+    let existingAppMetadata: any = {};
 
     try {
       const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
@@ -85,7 +86,8 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
         const found = usersData.users.find((u: any) => u.email?.toLowerCase() === email);
         if (found) {
           existingUserId = found.id;
-          existingMetadata = found.user_metadata || {};
+          existingUserMetadata = found.user_metadata || {};
+          existingAppMetadata = found.app_metadata || {};
         }
       }
     } catch (e) {
@@ -96,16 +98,19 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
     let finalUserId: string;
 
     if (existingUserId) {
-      // 2a. Account exists -> update password and ensure email_confirm: true
-      const { data: updateData, error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
+      // 2a. Account exists -> update password, email_confirm: true, and server-controlled app_metadata.role = 'admin'
+      const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
         existingUserId,
         {
           password,
           email_confirm: true,
-          user_metadata: {
-            ...existingMetadata,
-            full_name: fullName,
+          app_metadata: {
+            ...existingAppMetadata,
             role: 'admin',
+          },
+          user_metadata: {
+            ...existingUserMetadata,
+            full_name: fullName,
           },
         }
       );
@@ -121,30 +126,35 @@ export async function seedAdminUser(params: SeedAdminParams = {}): Promise<SeedA
       finalUserId = existingUserId;
       action = 'updated';
     } else {
-      // 2b. Try to create user with email_confirm: true
+      // 2b. Create user with email_confirm: true and app_metadata.role = 'admin'
       const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
+        app_metadata: {
+          role: 'admin',
+        },
         user_metadata: {
           full_name: fullName,
-          role: 'admin',
         },
       });
 
       if (createErr) {
         // If it failed because user already exists (race condition or pagination limit in listUsers)
         if (createErr.message.toLowerCase().includes('already registered') || createErr.message.toLowerCase().includes('already exists')) {
-          // Re-fetch users or query
           const { data: retryUsers } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
           const userFound = retryUsers?.users?.find((u: any) => u.email?.toLowerCase() === email);
           if (userFound) {
             const { error: retryUpdateErr } = await supabaseAdmin.auth.admin.updateUserById(userFound.id, {
               password,
               email_confirm: true,
-              user_metadata: {
-                full_name: fullName,
+              app_metadata: {
+                ...(userFound.app_metadata || {}),
                 role: 'admin',
+              },
+              user_metadata: {
+                ...(userFound.user_metadata || {}),
+                full_name: fullName,
               },
             });
             if (retryUpdateErr) {

@@ -31,6 +31,7 @@ export interface Product {
   rating: number;
   reviewCount: number;
   images: string[];
+  sku?: string;
   isFeatured?: boolean;
   isBestSeller?: boolean;
   isNewArrival?: boolean;
@@ -90,6 +91,7 @@ export type ProductCategory = string;
 
 export interface ServiceRequest {
   id: string;
+  userId?: string | null;
   ticketNumber: string;
   serviceId: string;
   serviceName: string;
@@ -132,6 +134,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  userId?: string | null;
   orderNumber: string;
   receiptNumber?: string;
   items: OrderItem[];
@@ -179,8 +182,11 @@ export interface Order {
 
 export interface UserAddress {
   id: string;
+  userId?: string;
   title: string;
+  fullName?: string;
   fullAddress: string;
+  streetAddress?: string;
   state: string;
   city: string;
   phone: string;
@@ -194,7 +200,24 @@ export interface UserAccount {
   phone: string;
   role: 'customer' | 'admin';
   addresses: UserAddress[];
+  defaultAddress?: {
+    streetAddress?: string;
+    city?: string;
+    state?: string;
+  };
   createdAt: string;
+}
+
+export interface AdminCustomerOverview {
+  id: string;
+  email: string;
+  fullName: string;
+  phone: string;
+  role: 'customer' | 'admin';
+  createdAt?: string;
+  addresses: UserAddress[];
+  wishlistProductIds: string[];
+  ordersCount: number;
 }
 
 export interface ProjectPortfolio {

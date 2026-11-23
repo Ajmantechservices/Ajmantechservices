@@ -160,6 +160,302 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
  */
 export const TARGET_ADMIN_EMAIL = 'joshuaajayi0148@gmail.com';
 
+/**
+ * Generates an RFC 4122 v4 UUID so records written to uuid-typed Postgres columns
+ * never fail with 22P02 invalid input syntax.
+ */
+export function generateUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Strictly verifies admin privileges using server-controlled app_metadata.role.
+ * NEVER trusts user_metadata or client-supplied role values.
+ */
+export function isUserVerifiedAdmin(user?: User | null): boolean {
+  if (!user) return false;
+  const appRole = (user.app_metadata as Record<string, any> | undefined)?.role;
+  return appRole === 'admin';
+}
+
+export interface CustomerAuthResult {
+  success: boolean;
+  message: string;
+  user?: User | null;
+  profile?: {
+    id: string;
+    email: string;
+    fullName: string;
+    phone: string;
+    role: 'customer' | 'admin';
+    defaultAddress?: {
+      streetAddress?: string;
+      city?: string;
+      state?: string;
+    };
+    createdAt?: string;
+  } | null;
+  role?: 'admin' | 'customer';
+}
+
+/**
+ * Verifies the active Supabase session directly with Supabase Auth server (getUser)
+ * and resolves the user's profile and verified role.
+ */
+export async function getVerifiedCurrentSession(): Promise<{
+  user: User | null;
+  role: 'admin' | 'customer';
+  isAdmin: boolean;
+  profile: CustomerAuthResult['profile'];
+}> {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { user: null, role: 'customer', isAdmin: false, profile: null };
+  }
+
+  try {
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !session || !session.user) {
+      return { user: null, role: 'customer', isAdmin: false, profile: null };
+    }
+
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    const verifiedUser = userData?.user;
+    if (userErr || !verifiedUser) {
+      return { user: null, role: 'customer', isAdmin: false, profile: null };
+    }
+
+    const verifiedAdmin = isUserVerifiedAdmin(verifiedUser);
+    const verifiedRole: 'admin' | 'customer' = verifiedAdmin ? 'admin' : 'customer';
+
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, phone, default_address, created_at')
+      .eq('id', verifiedUser.id)
+      .maybeSingle();
+
+    const fallbackName =
+      verifiedUser.user_metadata?.full_name ||
+      verifiedUser.user_metadata?.name ||
+      verifiedUser.email?.split('@')[0] ||
+      'Valued Customer';
+
+    return {
+      user: verifiedUser,
+      role: verifiedRole,
+      isAdmin: verifiedAdmin,
+      profile: {
+        id: verifiedUser.id,
+        email: profileRow?.email || verifiedUser.email || '',
+        fullName: profileRow?.full_name || fallbackName,
+        phone: profileRow?.phone || verifiedUser.user_metadata?.phone || '',
+        role: verifiedRole,
+        defaultAddress: profileRow?.default_address || undefined,
+        createdAt: profileRow?.created_at || verifiedUser.created_at,
+      },
+    };
+  } catch (err) {
+    console.warn('getVerifiedCurrentSession error:', err);
+    return { user: null, role: 'customer', isAdmin: false, profile: null };
+  }
+}
+
+export async function signInCustomerWithSupabase(
+  email: string,
+  password: string
+): Promise<CustomerAuthResult> {
+  if (!supabase || !isSupabaseConfigured()) {
+    return {
+      success: false,
+      message: 'Supabase authentication is not configured.',
+    };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error || !data.user) {
+      return {
+        success: false,
+        message: error?.message || 'Invalid email or password.',
+      };
+    }
+
+    const sessionInfo = await getVerifiedCurrentSession();
+    if (!sessionInfo.user) {
+      return {
+        success: false,
+        message: 'Could not verify authenticated user session.',
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Signed in successfully.',
+      user: sessionInfo.user,
+      profile: sessionInfo.profile,
+      role: sessionInfo.role,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || 'Sign in failed due to a network error.',
+    };
+  }
+}
+
+export async function signUpCustomerWithSupabase(params: {
+  fullName: string;
+  email: string;
+  phone: string;
+  password: string;
+}): Promise<CustomerAuthResult & { requiresEmailConfirmation?: boolean }> {
+  if (!supabase || !isSupabaseConfigured()) {
+    return {
+      success: false,
+      message: 'Supabase authentication is not configured.',
+    };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: params.email.trim(),
+      password: params.password,
+      options: {
+        data: {
+          full_name: params.fullName.trim(),
+          phone: params.phone.trim(),
+        },
+      },
+    });
+
+    if (error) {
+      return {
+        success: false,
+        message: error.message || 'Registration failed.',
+      };
+    }
+
+    if (!data.session || !data.user) {
+      return {
+        success: true,
+        requiresEmailConfirmation: true,
+        message: 'Account created. Please check your email inbox to confirm your email address, then sign in.',
+      };
+    }
+
+    // Ensure profile row exists with customer role (never admin)
+    await supabase
+      .from('profiles')
+      .upsert(
+        {
+          id: data.user.id,
+          email: params.email.trim().toLowerCase(),
+          full_name: params.fullName.trim(),
+          phone: params.phone.trim(),
+          role: 'customer',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id', ignoreDuplicates: true }
+      );
+
+    const sessionInfo = await getVerifiedCurrentSession();
+    return {
+      success: true,
+      message: 'Customer account created successfully!',
+      user: sessionInfo.user || data.user,
+      profile: sessionInfo.profile,
+      role: 'customer',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || 'Registration failed due to a network error.',
+    };
+  }
+}
+
+export async function signInCustomerWithGoogleOAuth(): Promise<{ success: boolean; message?: string }> {
+  if (!supabase || !isSupabaseConfigured()) {
+    return {
+      success: false,
+      message: 'Google sign-in requires Supabase configuration.',
+    };
+  }
+
+  try {
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/account` : undefined;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo },
+    });
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'Unable to start Google sign-in.' };
+  }
+}
+
+export async function signOutWithSupabase(): Promise<void> {
+  if (supabase && isSupabaseConfigured()) {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Supabase sign out error:', e);
+    }
+  }
+}
+
+export async function updateCustomerProfileInSupabase(
+  userId: string,
+  updates: {
+    fullName?: string;
+    phone?: string;
+    defaultAddress?: { streetAddress?: string; city?: string; state?: string };
+  }
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { success: true };
+  }
+
+  try {
+    const payload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof updates.fullName === 'string') payload.full_name = updates.fullName.trim();
+    if (typeof updates.phone === 'string') payload.phone = updates.phone.trim();
+    if (updates.defaultAddress !== undefined) payload.default_address = updates.defaultAddress;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(payload)
+      .eq('id', userId);
+
+    if (error) {
+      console.warn('updateCustomerProfileInSupabase error:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Profile update failed.' };
+  }
+}
+
+/**
+ * Sign in administrator using Supabase Auth & strictly verify server-controlled app_metadata.role === 'admin'.
+ * Rejects and signs out non-admin accounts or anyone relying solely on user_metadata.
+ */
 export async function signInAdminWithSupabase(
   email: string,
   pass: string
@@ -167,7 +463,6 @@ export async function signInAdminWithSupabase(
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
 
-  // Hard-lock: Check if requested email is EXACTLY joshuaajayi0148@gmail.com
   if (normalizedEmail !== normalizedTarget) {
     if (supabase && isSupabaseConfigured()) {
       try {
@@ -176,7 +471,7 @@ export async function signInAdminWithSupabase(
     }
     return {
       success: false,
-      message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+      message: 'Unauthorized access: Only verified administrators can log into this portal.',
       isPrivilegeDenied: true,
     };
   }
@@ -201,70 +496,32 @@ export async function signInAdminWithSupabase(
       };
     }
 
-    // Hard-lock: Check if authenticated user's email is EXACTLY joshuaajayi0148@gmail.com
-    const authenticatedEmail = data.user.email?.trim().toLowerCase();
-    if (authenticatedEmail !== normalizedTarget) {
+    // Re-verify directly against Supabase Auth server
+    const { data: verifiedData, error: verifyErr } = await supabase.auth.getUser();
+    const verifiedUser = verifiedData?.user;
+    if (verifyErr || !verifiedUser) {
       await supabase.auth.signOut();
       return {
         success: false,
-        message: 'Unauthorized access: Only the site owner can log into this dashboard.',
-        isPrivilegeDenied: true,
+        message: 'Could not verify administrator session with Supabase Auth.',
       };
     }
 
-    // Check user role using both sources:
-    const user = data.user;
-    const metaRole = user?.user_metadata?.role;
-
-    const { data: profile, error: profileErr } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (profileErr) {
-      console.warn('Profile fetch notice:', profileErr);
-    }
-
-    let isAdmin = profile?.role === 'admin' || metaRole === 'admin';
-
-    // Self-healing fallback for designated admin email if profile record was not created by trigger
-    if (!isAdmin && authenticatedEmail === normalizedTarget) {
-      try {
-        const { data: upserted } = await supabase
-          .from('profiles')
-          .upsert({
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || 'Abiodun Ajayi',
-            role: 'admin',
-          })
-          .select('role')
-          .maybeSingle();
-
-        if (upserted?.role === 'admin') {
-          isAdmin = true;
-        }
-      } catch (upsertErr) {
-        console.warn('Profile self-healing notice:', upsertErr);
-      }
-    }
-
-    if (!isAdmin) {
-      // Clear session immediately since not an admin
+    const authenticatedEmail = verifiedUser.email?.trim().toLowerCase();
+    if (authenticatedEmail !== normalizedTarget || !isUserVerifiedAdmin(verifiedUser)) {
       await supabase.auth.signOut();
       return {
         success: false,
-        message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+        message: 'Unauthorized access: Administrator privileges (app_metadata.role = admin) are required.',
         isPrivilegeDenied: true,
-        role: profile?.role || metaRole || 'customer',
+        role: 'customer',
       };
     }
 
     return {
       success: true,
       message: 'Admin authentication successful.',
-      user: data.user,
+      user: verifiedUser,
       role: 'admin',
     };
   } catch (err: any) {
@@ -416,9 +673,14 @@ export async function deleteSupabaseProducts(productIds: string[]) {
 }
 
 /**
- * Check current Supabase auth session & verify with Supabase Auth server (getUser) + profiles.role
+ * Check current Supabase auth session & verify server-controlled app_metadata.role === 'admin'.
+ * Never signs out valid customer sessions.
  */
-export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user: User | null; email?: string }> {
+export async function checkAdminAuthSession(): Promise<{
+  isAdmin: boolean;
+  user: User | null;
+  email?: string;
+}> {
   if (!supabase || !isSupabaseConfigured()) {
     return { isAdmin: false, user: null };
   }
@@ -429,38 +691,18 @@ export async function checkAdminAuthSession(): Promise<{ isAdmin: boolean; user:
       return { isAdmin: false, user: null };
     }
 
-    // Verify JWT directly with Supabase Auth server (prevents stale/forged local session)
+    // Verify JWT directly with Supabase Auth server
     const { data: userData, error: userErr } = await supabase.auth.getUser();
     const verifiedUser = userData?.user;
     if (userErr || !verifiedUser) {
-      await supabase.auth.signOut();
       return { isAdmin: false, user: null };
     }
 
-    const sessionEmail = verifiedUser.email?.toLowerCase().trim();
-    if (sessionEmail !== TARGET_ADMIN_EMAIL.toLowerCase()) {
-      await supabase.auth.signOut();
-      return { isAdmin: false, user: null };
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, email')
-      .eq('id', verifiedUser.id)
-      .maybeSingle();
-
-    const role = profile?.role || verifiedUser.user_metadata?.role;
-    const isAdmin = role === 'admin';
-
-    if (!isAdmin) {
-      await supabase.auth.signOut();
-      return { isAdmin: false, user: null };
-    }
-
+    const adminVerified = isUserVerifiedAdmin(verifiedUser);
     return {
-      isAdmin: true,
+      isAdmin: adminVerified,
       user: verifiedUser,
-      email: profile?.email || verifiedUser.email,
+      email: verifiedUser.email,
     };
   } catch (e) {
     console.warn('Session check error:', e);
@@ -880,5 +1122,303 @@ export async function uploadCategoryImage(
 
   return { url: optimizedDataUrl, persistedToStorage: false };
 }
+
+// =====================================================================
+// CUSTOMER-SCOPED & ADMIN-SCOPED SUPABASE DATA ACCESS HELPERS
+// =====================================================================
+
+export async function fetchCustomerOrders(userId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function fetchAllOrdersForAdmin() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function insertOrderInSupabase(row: Record<string, any>) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  return await supabase.from('orders').insert([row]).select().maybeSingle();
+}
+
+export async function updateOrderInSupabase(orderId: string, orderNumber: string, updates: Record<string, any>) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  const payload = { ...updates, updated_at: new Date().toISOString() };
+  const res = await supabase.from('orders').update(payload).eq('id', orderId).select();
+  if ((!res.data || res.data.length === 0) && orderNumber) {
+    return await supabase.from('orders').update(payload).eq('order_number', orderNumber).select();
+  }
+  return res;
+}
+
+export async function trackOrderSecureInSupabase(orderNumber: string, emailOrRef: string) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  const { data, error } = await supabase.rpc('track_order_secure', {
+    p_order_number: orderNumber.trim(),
+    p_email_or_token: emailOrRef.trim(),
+  });
+  const row = Array.isArray(data) ? data[0] : data;
+  return { data: row || null, error };
+}
+
+export async function fetchCustomerServiceRequests(userId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function fetchAllServiceRequestsForAdmin() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function insertServiceRequestInSupabase(row: Record<string, any>) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  return await supabase.from('service_requests').insert([row]).select().maybeSingle();
+}
+
+export async function updateServiceRequestInSupabase(
+  requestId: string,
+  ticketNumber: string,
+  updates: {
+    status?: string;
+    preferred_date?: string;
+    preferred_time?: string;
+    assigned_technician?: string;
+    admin_notes?: string;
+  }
+) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  const payload = { ...updates, updated_at: new Date().toISOString() };
+  const res = await supabase.from('service_requests').update(payload).eq('id', requestId).select();
+  if ((!res.data || res.data.length === 0) && ticketNumber) {
+    return await supabase.from('service_requests').update(payload).eq('ticket_number', ticketNumber).select();
+  }
+  return res;
+}
+
+export async function fetchCustomerAddresses(userId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('customer_addresses')
+    .select('*')
+    .eq('user_id', userId)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function fetchAllCustomerAddressesForAdmin() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('customer_addresses')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function upsertCustomerAddressInSupabase(
+  userId: string,
+  address: {
+    id?: string;
+    title: string;
+    fullName?: string;
+    streetAddress: string;
+    city: string;
+    state: string;
+    phone: string;
+    isDefault: boolean;
+  }
+) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { data: null, error: null };
+  }
+
+  if (address.isDefault) {
+    await supabase
+      .from('customer_addresses')
+      .update({ is_default: false, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+  }
+
+  const rowId = address.id && isValidUuid(address.id) ? address.id : generateUuid();
+  const payload = {
+    id: rowId,
+    user_id: userId,
+    title: address.title.trim() || 'Home',
+    full_name: address.fullName?.trim() || null,
+    street_address: address.streetAddress.trim(),
+    city: address.city.trim(),
+    state: address.state.trim(),
+    phone: address.phone.trim(),
+    is_default: Boolean(address.isDefault),
+    updated_at: new Date().toISOString(),
+  };
+
+  return await supabase
+    .from('customer_addresses')
+    .upsert(payload, { onConflict: 'id' })
+    .select()
+    .maybeSingle();
+}
+
+export async function deleteCustomerAddressInSupabase(userId: string, addressId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId) || !isValidUuid(addressId)) {
+    return { error: null };
+  }
+  return await supabase
+    .from('customer_addresses')
+    .delete()
+    .eq('id', addressId)
+    .eq('user_id', userId);
+}
+
+export async function fetchCustomerWishlist(userId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('customer_wishlists')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function fetchAllCustomerWishlistsForAdmin() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('customer_wishlists')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function addCustomerWishlistItem(userId: string, productId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { error: null };
+  }
+  return await supabase
+    .from('customer_wishlists')
+    .upsert({ user_id: userId, product_id: productId }, { onConflict: 'user_id,product_id' });
+}
+
+export async function removeCustomerWishlistItem(userId: string, productId: string) {
+  if (!supabase || !isSupabaseConfigured() || !isValidUuid(userId)) {
+    return { error: null };
+  }
+  return await supabase
+    .from('customer_wishlists')
+    .delete()
+    .eq('user_id', userId)
+    .eq('product_id', productId);
+}
+
+export async function fetchAllProfilesForAdmin() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: [] as any[], error: null };
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, full_name, phone, role, default_address, created_at')
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function fetchStoreSettingsFromSupabase() {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  return await supabase
+    .from('store_settings')
+    .select('*')
+    .eq('id', 'primary_settings')
+    .maybeSingle();
+}
+
+export async function upsertStoreSettingsInSupabase(settings: Record<string, any>) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: null, error: null };
+  }
+  return await supabase
+    .from('store_settings')
+    .upsert(
+      {
+        id: 'primary_settings',
+        store_name: settings.storeName,
+        tagline: settings.tagline,
+        phone_number: settings.phone,
+        alt_phone: settings.altPhone,
+        whatsapp_number: settings.whatsappNumber,
+        email: settings.email,
+        address: settings.address,
+        opening_hours: settings.openingHours,
+        delivery_fee_lagos: settings.deliveryRates?.Lagos ?? 2500,
+        delivery_fee_other_states: settings.defaultDeliveryFee ?? 4500,
+        default_delivery_fee: settings.defaultDeliveryFee ?? 4500,
+        free_delivery_threshold: settings.freeDeliveryThreshold ?? 50000,
+        delivery_rates: settings.deliveryRates || {},
+        bank_details: settings.bankDetails || {},
+        promo_codes: settings.promoCodes || [],
+        social_links: settings.socialLinks || {},
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    )
+    .select()
+    .maybeSingle();
+}
+
 
 

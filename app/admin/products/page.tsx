@@ -73,6 +73,8 @@ export default function AdminProductsPage() {
   } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const [isBlockedCustomer, setIsBlockedCustomer] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
     const verifySession = async () => {
@@ -81,9 +83,18 @@ export default function AdminProductsPage() {
       if (!isMounted) return;
       if (res.isAdmin && res.email) {
         setAuthorizedAdmin({ email: res.email });
+        setIsBlockedCustomer(false);
         await fetchProducts();
       } else {
         setAuthorizedAdmin(null);
+        // Check if a regular customer is currently logged in
+        try {
+          const client = createClient();
+          const { data } = await client.auth.getUser();
+          if (isMounted && data?.user) {
+            setIsBlockedCustomer(true);
+          }
+        } catch {}
         setLoading(false);
       }
       setAuthChecking(false);
@@ -294,6 +305,25 @@ export default function AdminProductsPage() {
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-slate-600">
         <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm">Verifying Supabase administrator session...</p>
+      </div>
+    );
+  }
+
+  if (isBlockedCustomer) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-6 bg-slate-50">
+        <div className="w-full max-w-md bg-white border border-rose-200 rounded-2xl p-8 shadow-sm text-center space-y-4">
+          <h1 className="text-xl font-bold text-rose-700">Access Denied</h1>
+          <p className="text-sm text-slate-600">
+            This administrator page is restricted to verified store administrators. Customer accounts cannot access admin product management.
+          </p>
+          <a
+            href="/account"
+            className="inline-block px-5 py-2.5 rounded-xl bg-[#0047AB] text-white text-xs font-bold hover:bg-[#002D72] transition-colors"
+          >
+            Return to My Account
+          </a>
+        </div>
       </div>
     );
   }

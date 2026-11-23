@@ -10,6 +10,8 @@ import {
   OrderItem,
   OrderStatus,
   UserAccount,
+  UserAddress,
+  AdminCustomerOverview,
   ProjectPortfolio,
   Review,
   FAQItem,
@@ -38,16 +40,41 @@ import {
 import {
   supabase,
   isSupabaseConfigured,
+  generateUuid,
+  getVerifiedCurrentSession,
+  signInCustomerWithSupabase,
+  signUpCustomerWithSupabase,
+  signInCustomerWithGoogleOAuth,
+  signOutWithSupabase,
+  updateCustomerProfileInSupabase,
   signInAdminWithSupabase,
   signUpAdminWithSupabase,
   signOutAdminWithSupabase,
-  checkAdminAuthSession,
-  fetchProductGallery,
   addImagesToProductGallery,
   removeProductGalleryImage,
   TARGET_ADMIN_EMAIL,
   insertSupabaseProduct,
   updateSupabaseProduct,
+  fetchCustomerOrders,
+  fetchAllOrdersForAdmin,
+  insertOrderInSupabase,
+  updateOrderInSupabase,
+  trackOrderSecureInSupabase,
+  fetchCustomerServiceRequests,
+  fetchAllServiceRequestsForAdmin,
+  insertServiceRequestInSupabase,
+  updateServiceRequestInSupabase,
+  fetchCustomerAddresses,
+  fetchAllCustomerAddressesForAdmin,
+  upsertCustomerAddressInSupabase,
+  deleteCustomerAddressInSupabase,
+  fetchCustomerWishlist,
+  fetchAllCustomerWishlistsForAdmin,
+  addCustomerWishlistItem,
+  removeCustomerWishlistItem,
+  fetchAllProfilesForAdmin,
+  fetchStoreSettingsFromSupabase,
+  upsertStoreSettingsInSupabase,
 } from '../lib/supabase';
 
 
@@ -115,7 +142,7 @@ interface StoreContextType {
   reviews: Review[];
   faqs: FAQItem[];
   storeSettings: StoreSettings;
-  updateStoreSettings: (settings: StoreSettings) => void;
+  updateStoreSettings: (settings: StoreSettings) => Promise<void> | void;
 
   // Cart
   cart: CartItem[];
@@ -133,33 +160,53 @@ interface StoreContextType {
   removeFromWishlist: (productId: string) => void;
   wishlistCount: number;
 
+  // Customer Delivery Addresses
+  customerAddresses: UserAddress[];
+  addCustomerAddress: (address: Omit<UserAddress, 'id'>) => Promise<boolean>;
+  updateCustomerAddress: (address: UserAddress) => Promise<boolean>;
+  deleteCustomerAddress: (addressId: string) => Promise<boolean>;
+  setDefaultCustomerAddress: (addressId: string) => Promise<boolean>;
+
+  // Admin Customer Fulfillment & Wishlist Overview
+  adminCustomers: AdminCustomerOverview[];
+  refreshAdminCustomerData: () => Promise<void>;
+
   // Orders
   orders: Order[];
   createOrder: (orderData: Partial<Order> & Record<string, any>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus, note?: string) => void;
+  rejectOrder: (orderId: string, reason?: string) => void;
   updateOrderPaymentStatus: (orderId: string, paymentStatus: 'pending' | 'paid' | 'verified', paymentReference?: string, paymentChannel?: string) => void;
   getOrderByIdOrNumber: (identifier: string) => Order | undefined;
+  trackOrderSecure: (orderNumber: string, emailOrRef: string) => Promise<Order | null>;
 
   // Services
   serviceRequests: ServiceRequest[];
   createServiceRequest: (requestData: Omit<ServiceRequest, 'id' | 'ticketNumber' | 'createdAt' | 'status'>) => ServiceRequest;
-  updateServiceRequestStatus: (requestId: string, status: ServiceRequest['status'], notes?: string, assignedTech?: string) => void;
+  updateServiceRequestStatus: (
+    requestId: string,
+    status: ServiceRequest['status'],
+    notes?: string,
+    assignedTech?: string,
+    preferredDate?: string,
+    preferredTimeSlot?: string
+  ) => void;
 
   // Auth & Profile
   currentUser: UserAccount | null;
-  login: (emailOrPhone: string, pass: string) => { success: boolean; message: string };
-  loginWithGoogle: (googleUser?: { fullName?: string; email: string }) => { success: boolean; message: string };
+  login: (emailOrPhone: string, pass: string) => Promise<{ success: boolean; message: string; role?: 'admin' | 'customer' }>;
+  loginWithGoogle: () => Promise<{ success: boolean; message: string }>;
   register: (
     fullNameOrData: string | { fullName: string; email: string; phone: string; password?: string; role?: string },
     email?: string,
     phone?: string,
     pass?: string
-  ) => { success: boolean; message: string };
-  logout: () => void;
+  ) => Promise<{ success: boolean; message: string; requiresEmailConfirmation?: boolean }>;
+  logout: () => Promise<void>;
   adminLogin: (email: string, pass: string) => Promise<{ success: boolean; message: string; isPrivilegeDenied?: boolean }>;
   adminSignUp: (fullName: string, email: string, pass: string) => Promise<{ success: boolean; message: string }>;
   adminLogout: () => Promise<void>;
-  updateUserProfile: (updatedUser: Partial<UserAccount>) => void;
+  updateUserProfile: (updatedUser: Partial<UserAccount>) => Promise<void> | void;
   isAdmin: boolean;
   setIsAdmin: (isAdmin: boolean) => void;
   isAuthChecking: boolean;
@@ -209,14 +256,96 @@ const STORAGE_KEYS = {
   REVIEWS: 'ajmantech_reviews_v1',
   SETTINGS: 'ajmantech_settings_v1',
   CART: 'ajmantech_cart_v1',
-  WISHLIST: 'ajmantech_wishlist_v1',
-  ORDERS: 'ajmantech_orders_v1',
-  SERVICE_REQUESTS: 'ajmantech_service_requests_v1',
-  USER: 'ajmantech_user_v1',
-  IS_ADMIN: 'ajmantech_is_admin_v1',
-  REGISTERED_USERS: 'ajmantech_registered_customers_v1',
   ACTIVITY_LOGS: 'ajmantech_activity_logs_v1',
 };
+
+const LEGACY_SHARED_KEYS_TO_CLEAR = [
+  'ajmantech_wishlist_v1',
+  'ajmantech_orders_v1',
+  'ajmantech_service_requests_v1',
+  'ajmantech_user_v1',
+  'ajmantech_is_admin_v1',
+  'ajmantech_registered_customers_v1',
+];
+
+const mapDbOrderRow = (o: any): Order => {
+  const addr = o.delivery_address || {};
+  return {
+    id: String(o.id),
+    userId: o.user_id || null,
+    orderNumber: o.order_number,
+    items: Array.isArray(o.items) ? o.items : [],
+    customer: {
+      fullName: o.customer_name || addr.fullName || 'Valued Customer',
+      email: o.customer_email || '',
+      phone: o.customer_phone || addr.phone || '',
+      address: addr.streetAddress || addr.address || '',
+      state: addr.state || 'Lagos',
+      city: addr.city || 'Lagos',
+      notes: o.delivery_notes || '',
+    },
+    customerName: o.customer_name || 'Valued Customer',
+    customerEmail: o.customer_email || '',
+    customerPhone: o.customer_phone || '',
+    deliveryAddress: {
+      fullName: o.customer_name || addr.fullName,
+      phone: o.customer_phone || addr.phone,
+      streetAddress: addr.streetAddress || addr.address || '',
+      address: addr.address || addr.streetAddress || '',
+      state: addr.state || 'Lagos',
+      city: addr.city || 'Lagos',
+    },
+    subtotal: Math.max(0, Number(o.total_amount || 0) - Number(o.delivery_fee || 0) - Number(o.installation_fee || 0)),
+    deliveryFee: Number(o.delivery_fee || 0),
+    discountAmount: 0,
+    total: Number(o.total_amount || 0),
+    totalAmount: Number(o.total_amount || 0),
+    paymentMethod: o.payment_method || 'bank_transfer',
+    paymentStatus: o.payment_status || 'pending',
+    paymentReference: o.reference || undefined,
+    status: o.status || 'placed',
+    trackingHistory: Array.isArray(o.tracking_history) ? o.tracking_history : [],
+    createdAt: o.created_at ? String(o.created_at).split('T')[0] : new Date().toISOString().split('T')[0],
+    estimatedDelivery: '24-48 Hours from Dispatch',
+    includesInstallation: Boolean(o.installation_fee && Number(o.installation_fee) > 0),
+    installationFee: o.installation_fee ? Number(o.installation_fee) : 0,
+    notes: o.delivery_notes || '',
+  };
+};
+
+const mapDbServiceRequestRow = (s: any): ServiceRequest => ({
+  id: String(s.id),
+  userId: s.user_id || null,
+  ticketNumber: s.ticket_number,
+  serviceId: s.service_type || 'srv-electrical',
+  serviceName: s.service_name || 'Electrical Installation',
+  customerName: s.customer_name || 'Customer',
+  email: s.customer_email || '',
+  phone: s.customer_phone || '',
+  state: s.location?.state || 'Lagos',
+  city: s.location?.city || 'Lagos',
+  address: s.location?.address || '',
+  preferredDate: s.preferred_date || '',
+  preferredTimeSlot: s.preferred_time || 'Morning',
+  description: s.description || '',
+  status: s.status || 'new',
+  assignedTechnician: s.assigned_technician || undefined,
+  internalNotes: s.admin_notes || undefined,
+  createdAt: s.created_at ? String(s.created_at).split('T')[0] : new Date().toISOString().split('T')[0],
+});
+
+const mapDbAddressRow = (a: any): UserAddress => ({
+  id: String(a.id),
+  userId: a.user_id,
+  title: a.title || 'Home',
+  fullName: a.full_name || '',
+  fullAddress: a.street_address || '',
+  streetAddress: a.street_address || '',
+  city: a.city || '',
+  state: a.state || 'Lagos',
+  phone: a.phone || '',
+  isDefault: Boolean(a.is_default),
+});
 
 const resolveCategoryImage = (name: string, slug: string, rawIcon?: string | null, rawImage?: string | null): string => {
   const candidates = [rawImage, rawIcon];
@@ -423,287 +552,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return loaded;
   });
 
-  // User State: Signed out by default until an actual user creates an account or logs in.
-  // Never trust localStorage for admin elevation; admin state is always verified via Supabase Auth.
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    const storedUser = loadStored<UserAccount | null>(STORAGE_KEYS.USER, null);
-    if (
-      storedUser &&
-      (storedUser.id === 'usr-demo-01' ||
-        storedUser.email === 'admin@ajmantech.ng' ||
-        storedUser.role === 'admin')
-    ) {
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.removeItem(STORAGE_KEYS.USER);
-          localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
-        } catch {}
-      }
-      return null;
-    }
-    return storedUser;
-  });
+  // Clear legacy shared client storage keys on mount so demo/cross-customer data never leaks
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      LEGACY_SHARED_KEYS_TO_CLEAR.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+  }, []);
 
+  // User State: verified strictly against Supabase Auth session (never restored from localStorage)
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  // Registered Customer Accounts database in localStorage
-  const [registeredUsers, setRegisteredUsers] = useState<Array<{
-    id: string;
-    fullName: string;
-    email: string;
-    phone: string;
-    password?: string;
-    createdAt: string;
-    addresses?: any[];
-  }>>(() => loadStored(STORAGE_KEYS.REGISTERED_USERS, []));
-
-  // Cart & Wishlist
+  // Cart & User-Owned Private Data (never pre-seeded with demo orders/wishlists/requests)
   const [cart, setCart] = useState<CartItem[]>(() => loadStored(STORAGE_KEYS.CART, []));
-  const [wishlist, setWishlist] = useState<WishlistItem[]>(() => loadStored(STORAGE_KEYS.WISHLIST, [
-    { productId: 'prod-01', addedAt: new Date().toISOString() },
-    { productId: 'prod-02', addedAt: new Date().toISOString() }
-  ]));
-
-  // Orders & Service Requests
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const stored = loadStored<Order[]>(STORAGE_KEYS.ORDERS, []);
-    if (stored.length === 0) {
-      // Seed an initial demo order so tracking and dashboard look rich immediately
-      const demoOrder: Order = {
-        id: 'ord-demo-1001',
-        orderNumber: 'AJM-2026-8942',
-        items: [
-          {
-            productId: 'prod-01',
-            title: 'AjmanTech Royale 3-Ring Crystal LED Chandelier',
-            price: 155000,
-            quantity: 1,
-            image: 'https://images.unsplash.com/photo-1543198126-a8ad8e47fb22?q=80&w=1000&auto=format&fit=crop',
-            variant: 'French Gold (60+40+20cm)',
-          },
-          {
-            productId: 'prod-03',
-            title: 'UltraGlow 12W Energy Saving LED Bulbs (Pack of 10)',
-            price: 14500,
-            quantity: 2,
-            image: 'https://images.unsplash.com/photo-1550985616-10810253b84d?q=80&w=1000&auto=format&fit=crop',
-            variant: 'E27 Screw Base (Daylight 6500K)',
-          },
-        ],
-        customer: {
-          fullName: 'Engr. Abiodun Ajayi',
-          email: 'joshuaajayi0148@gmail.com',
-          phone: '+234 802 345 6789',
-          address: 'No. 24 Admiralty Way, Lekki Phase 1',
-          state: 'Lagos',
-          city: 'Lekki',
-          notes: 'Please call before arrival. Gate code 4490.',
-        },
-        subtotal: 184000,
-        deliveryFee: 0, // Free delivery above 150k
-        discountAmount: 18400,
-        promoCode: 'AJMANLIGHT10',
-        total: 165600,
-        paymentMethod: 'bank_transfer',
-        paymentStatus: 'verified',
-        status: 'out_for_delivery',
-        trackingHistory: [
-          {
-            status: 'placed',
-            title: 'Order Placed',
-            description: 'Order received and logged in AjmanTech central system.',
-            timestamp: '2026-02-26 10:30 AM',
-            completed: true,
-          },
-          {
-            status: 'confirmed',
-            title: 'Payment Verified',
-            description: 'Bank transfer verified by AjmanTech Accounts team.',
-            timestamp: '2026-02-26 11:15 AM',
-            completed: true,
-          },
-          {
-            status: 'processing',
-            title: 'Quality Tested & Packed',
-            description: 'Chandelier bench tested; crystals inspected & bubble-wrapped.',
-            timestamp: '2026-02-27 09:00 AM',
-            completed: true,
-          },
-          {
-            status: 'dispatched',
-            title: 'Dispatched to Dispatch Unit',
-            description: 'Package handed over to Lagos Express courier vehicle.',
-            timestamp: '2026-02-27 02:45 PM',
-            completed: true,
-          },
-          {
-            status: 'out_for_delivery',
-            title: 'Out for Delivery',
-            description: 'Driver Musa (Lekki Route) is en route with your package.',
-            timestamp: '2026-02-28 08:30 AM',
-            completed: true,
-          },
-          {
-            status: 'delivered',
-            title: 'Delivered',
-            description: 'Package received and confirmed by customer.',
-            timestamp: 'Pending',
-            completed: false,
-          },
-        ],
-        createdAt: '2026-02-26',
-        estimatedDelivery: '2026-02-28 (Today)',
-        includesInstallation: true,
-        installationFee: 15000,
-      };
-
-      const pendingOrder1: Order = {
-        id: 'ord-pending-1002',
-        orderNumber: 'AJM-2026-9421',
-        items: [
-          {
-            productId: 'prod-02',
-            title: 'Felicity Solar 5KVA 48V Pure Sine Wave Hybrid Inverter',
-            price: 680000,
-            quantity: 1,
-            image: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?q=80&w=1000&auto=format&fit=crop',
-            variant: '5KVA / 48V High Voltage',
-          },
-        ],
-        customer: {
-          fullName: 'Alhaji Garba Shehu',
-          email: 'garba.shehu@gmail.com',
-          phone: '+234 803 456 7890',
-          address: 'Plot 14, Maitama District, near Farmers Market',
-          state: 'Abuja (FCT)',
-          city: 'Maitama',
-          notes: 'Deliver before Friday. Needs professional inverter installation.',
-        },
-        subtotal: 680000,
-        deliveryFee: 0,
-        discountAmount: 0,
-        total: 680000,
-        paymentMethod: 'bank_transfer',
-        paymentStatus: 'pending',
-        paymentReference: 'ZEN-TXN-8829103',
-        status: 'placed',
-        trackingHistory: [
-          {
-            status: 'placed',
-            title: 'Order Placed by Customer',
-            description: 'Order submitted via website. Awaiting Admin Approval & Bank verification.',
-            timestamp: '2026-03-01 02:15 PM',
-            completed: true,
-          },
-          {
-            status: 'confirmed',
-            title: 'Admin Approval & Payment Confirmed',
-            description: 'Admin verified bank receipt and approved order for fulfillment.',
-            timestamp: 'Pending Approval',
-            completed: false,
-          },
-          {
-            status: 'processing',
-            title: 'Bench Tested & Dispatched',
-            description: 'Item packed in warehouse and prepared for transit.',
-            timestamp: 'Pending',
-            completed: false,
-          },
-        ],
-        createdAt: '2026-03-01',
-        estimatedDelivery: '2026-03-04',
-        includesInstallation: true,
-        installationFee: 25000,
-      };
-
-      const pendingOrder2: Order = {
-        id: 'ord-pending-1003',
-        orderNumber: 'AJM-2026-9508',
-        items: [
-          {
-            productId: 'prod-04',
-            title: 'Smart Wi-Fi Touch Wall Switch (3-Gang Glass)',
-            price: 28500,
-            quantity: 2,
-            image: 'https://images.unsplash.com/photo-1558002038-1055907df827?q=80&w=1000&auto=format&fit=crop',
-            variant: 'Crystal White Tempered Glass',
-          },
-        ],
-        customer: {
-          fullName: 'Dr. Funke Adeyemi',
-          email: 'funke.adeyemi@yahoo.com',
-          phone: '+234 812 345 6789',
-          address: 'Block B, Coral Estate, GRA Ikeja',
-          state: 'Lagos',
-          city: 'Ikeja',
-          notes: 'Pay on delivery confirmed. Please call 1 hour before delivery.',
-        },
-        subtotal: 57000,
-        deliveryFee: 3500,
-        discountAmount: 0,
-        total: 60500,
-        paymentMethod: 'pay_on_delivery',
-        paymentStatus: 'pending',
-        status: 'placed',
-        trackingHistory: [
-          {
-            status: 'placed',
-            title: 'Order Placed by Customer',
-            description: 'Order submitted with Pay on Delivery. Awaiting admin review.',
-            timestamp: '2026-03-02 09:40 AM',
-            completed: true,
-          },
-          {
-            status: 'confirmed',
-            title: 'Admin Approval',
-            description: 'Approved by admin for dispatch.',
-            timestamp: 'Pending Approval',
-            completed: false,
-          },
-        ],
-        createdAt: '2026-03-02',
-        estimatedDelivery: '2026-03-03',
-      };
-
-      return [pendingOrder1, pendingOrder2, demoOrder];
-    }
-    return stored;
-  });
-
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>(() => {
-    const stored = loadStored<ServiceRequest[]>(STORAGE_KEYS.SERVICE_REQUESTS, []);
-    if (stored.length === 0) {
-      const demoReq: ServiceRequest = {
-        id: 'srv-req-01',
-        ticketNumber: 'SRV-5491',
-        serviceId: 'srv-solar-installation',
-        serviceName: 'Solar & Inverter System Installation',
-        customerName: 'Engr. Abiodun Ajayi',
-        email: 'joshuaajayi0148@gmail.com',
-        phone: '+234 802 345 6789',
-        state: 'Lagos',
-        city: 'Lekki Phase 1',
-        address: 'No. 24 Admiralty Way',
-        preferredDate: '2026-03-02',
-        preferredTimeSlot: 'Morning (9:00 AM - 12:00 PM)',
-        description: 'Need energy audit for a 5-bedroom duplex. Want to power 2 inverter ACs, refrigerator, lighting, and TV during day and night with lithium battery.',
-        status: 'scheduled',
-        createdAt: '2026-02-25',
-        internalNotes: 'Site inspection scheduled with Engr. Tunde Williams.',
-        assignedTechnician: 'Engr. Tunde Williams (Lead Solar Engineer)',
-      };
-      return [demoReq];
-    }
-    return stored;
-  });
+  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [customerAddresses, setCustomerAddresses] = useState<UserAddress[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
+  const [adminCustomers, setAdminCustomers] = useState<AdminCustomerOverview[]>([]);
 
   // Activity Audit Logs State
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() =>
     loadStored(STORAGE_KEYS.ACTIVITY_LOGS, INITIAL_ACTIVITY_LOGS)
   );
-
-
 
   useEffect(() => {
     try {
@@ -737,68 +610,147 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEYS.WISHLIST, JSON.stringify(wishlist));
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(activityLogs));
     } catch (e) { console.error(e); }
-  }, [wishlist]);
+  }, [activityLogs]);
 
-  useEffect(() => {
+  // Helper: Load strictly customer-scoped data for an authenticated customer
+  const loadCustomerScopedData = async (userId: string) => {
+    if (!isSupabaseConfigured() || !supabase) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
-    } catch (e) { console.error(e); }
-  }, [orders]);
+      const [ordRes, srvRes, addrRes, wishRes] = await Promise.all([
+        fetchCustomerOrders(userId),
+        fetchCustomerServiceRequests(userId),
+        fetchCustomerAddresses(userId),
+        fetchCustomerWishlist(userId),
+      ]);
 
-  useEffect(() => {
+      setOrders((ordRes.data || []).map(mapDbOrderRow));
+      setServiceRequests((srvRes.data || []).map(mapDbServiceRequestRow));
+      const mappedAddrs = (addrRes.data || []).map(mapDbAddressRow);
+      setCustomerAddresses(mappedAddrs);
+      setCurrentUser((prev) => (prev && prev.id === userId ? { ...prev, addresses: mappedAddrs } : prev));
+      setWishlist(
+        (wishRes.data || []).map((w: any) => ({
+          productId: String(w.product_id),
+          addedAt: w.created_at || new Date().toISOString(),
+        }))
+      );
+      setAdminCustomers([]);
+    } catch (err) {
+      console.warn('Error loading customer-scoped data:', err);
+    }
+  };
+
+  // Helper: Load all customer orders, service requests, addresses & wishlists for verified Admins ONLY
+  const loadAdminScopedData = async () => {
+    if (!isSupabaseConfigured() || !supabase) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.SERVICE_REQUESTS, JSON.stringify(serviceRequests));
-    } catch (e) { console.error(e); }
-  }, [serviceRequests]);
+      const [ordRes, srvRes, profRes, addrRes, wishRes] = await Promise.all([
+        fetchAllOrdersForAdmin(),
+        fetchAllServiceRequestsForAdmin(),
+        fetchAllProfilesForAdmin(),
+        fetchAllCustomerAddressesForAdmin(),
+        fetchAllCustomerWishlistsForAdmin(),
+      ]);
 
-  useEffect(() => {
-    try {
-      // Only persist non-admin customer profiles in localStorage; admin session lives in Supabase Auth
-      if (currentUser && currentUser.role !== 'admin') {
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.USER);
-      }
-    } catch (e) { console.error(e); }
-  }, [currentUser]);
+      const mappedOrders = (ordRes.data || []).map(mapDbOrderRow);
+      setOrders(mappedOrders);
+      setServiceRequests((srvRes.data || []).map(mapDbServiceRequestRow));
 
-  useEffect(() => {
-    try {
-      localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
-    } catch (e) { console.error(e); }
-  }, [isAdmin]);
+      const addressesByUser = new Map<string, UserAddress[]>();
+      (addrRes.data || []).forEach((row: any) => {
+        const mapped = mapDbAddressRow(row);
+        const list = addressesByUser.get(row.user_id) || [];
+        list.push(mapped);
+        addressesByUser.set(row.user_id, list);
+      });
 
-  // Verify live Supabase Admin Auth session on mount and across auth state changes
+      const wishlistByUser = new Map<string, string[]>();
+      (wishRes.data || []).forEach((row: any) => {
+        const list = wishlistByUser.get(row.user_id) || [];
+        list.push(String(row.product_id));
+        wishlistByUser.set(row.user_id, list);
+      });
+
+      const ordersCountByUser = new Map<string, number>();
+      mappedOrders.forEach((o) => {
+        if (o.userId) {
+          ordersCountByUser.set(o.userId, (ordersCountByUser.get(o.userId) || 0) + 1);
+        }
+      });
+
+      const overviews: AdminCustomerOverview[] = (profRes.data || []).map((p: any) => ({
+        id: String(p.id),
+        email: p.email || '',
+        fullName: p.full_name || 'Customer',
+        phone: p.phone || '',
+        role: p.role === 'admin' ? 'admin' : 'customer',
+        createdAt: p.created_at ? String(p.created_at).split('T')[0] : undefined,
+        addresses: addressesByUser.get(p.id) || [],
+        wishlistProductIds: wishlistByUser.get(p.id) || [],
+        ordersCount: ordersCountByUser.get(p.id) || 0,
+      }));
+      setAdminCustomers(overviews);
+    } catch (err) {
+      console.warn('Error loading admin-scoped data:', err);
+    }
+  };
+
+  const refreshAdminCustomerData = async () => {
+    if (!isAdmin) return;
+    await loadAdminScopedData();
+  };
+
+  const clearUserOwnedState = () => {
+    setOrders([]);
+    setServiceRequests([]);
+    setWishlist([]);
+    setCustomerAddresses([]);
+    setAdminCustomers([]);
+  };
+
+  // Verify live Supabase Auth session (customer or admin) on mount & auth state change
   useEffect(() => {
     let isMounted = true;
 
     const verifySession = async () => {
       try {
-        const res = await checkAdminAuthSession();
+        const sessionInfo = await getVerifiedCurrentSession();
         if (!isMounted) return;
-        if (res.isAdmin && res.user) {
-          setIsAdmin(true);
-          setCurrentUser({
-            id: res.user.id,
-            fullName: res.user.user_metadata?.full_name || 'Engr. Abiodun Ajayi',
-            email: res.email || res.user.email || TARGET_ADMIN_EMAIL,
-            phone: '+234 807 532 9182',
-            role: 'admin',
+
+        if (sessionInfo.user && sessionInfo.profile) {
+          const account: UserAccount = {
+            id: sessionInfo.profile.id,
+            fullName: sessionInfo.profile.fullName,
+            email: sessionInfo.profile.email,
+            phone: sessionInfo.profile.phone,
+            role: sessionInfo.role,
             addresses: [],
-            createdAt: res.user.created_at
-              ? res.user.created_at.split('T')[0]
+            defaultAddress: sessionInfo.profile.defaultAddress,
+            createdAt: sessionInfo.profile.createdAt
+              ? String(sessionInfo.profile.createdAt).split('T')[0]
               : new Date().toISOString().split('T')[0],
-          });
+          };
+
+          setCurrentUser(account);
+          setIsAdmin(sessionInfo.isAdmin);
+
+          if (sessionInfo.isAdmin) {
+            await loadAdminScopedData();
+          } else {
+            await loadCustomerScopedData(account.id);
+          }
         } else {
           setIsAdmin(false);
-          setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+          setCurrentUser(null);
+          clearUserOwnedState();
         }
       } catch {
         if (isMounted) {
           setIsAdmin(false);
-          setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+          setCurrentUser(null);
+          clearUserOwnedState();
         }
       } finally {
         if (isMounted) {
@@ -815,7 +767,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             if (event === 'SIGNED_OUT') {
               if (!isMounted) return;
               setIsAdmin(false);
-              setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+              setCurrentUser(null);
+              clearUserOwnedState();
               setIsAuthChecking(false);
             } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
               verifySession();
@@ -829,19 +782,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(registeredUsers));
-    } catch (e) { console.error(e); }
-  }, [registeredUsers]);
-
-  // Initial Supabase Sync when environment variables are configured
+  // Public Storefront Catalog & Store Settings Sync (never reads private customer orders/requests)
   useEffect(() => {
     if (!isSupabaseConfigured() || !supabase) return;
 
-    const fetchSupabaseData = async () => {
+    const fetchPublicStoreData = async () => {
       try {
-        // 1. Force-dynamic fetch products from Supabase (no-store cache)
         const { data: dbProducts, error: prodErr } = await supabase
           .from('products')
           .select('*')
@@ -882,105 +828,58 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           setProducts(mappedProducts);
         }
 
-        // 2. Fetch categories & enforce the 7 main category structure non-destructively
         const { data: dbCats, error: catErr } = await supabase.from('categories').select('*');
         if (!catErr && Array.isArray(dbCats)) {
           setCategories(mergeWithMainCategories(dbCats, latestProducts));
         }
 
-        // 3. Fetch Orders
-        const { data: dbOrders, error: ordErr } = await supabase
-          .from('orders')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (!ordErr && dbOrders && dbOrders.length > 0) {
-          const mappedOrders: Order[] = dbOrders.map((o: any) => ({
-            id: o.id,
-            orderNumber: o.order_number,
-            items: o.items || [],
-            customer: {
-              fullName: o.customer_name || 'Valued Customer',
-              email: o.customer_email || '',
-              phone: o.customer_phone || '',
-              address: o.delivery_address?.address || '',
-              state: o.delivery_address?.state || 'Lagos',
-              city: o.delivery_address?.city || 'Lagos',
-              notes: o.delivery_notes || '',
-            },
-            subtotal: Number(o.total_amount || 0) - Number(o.delivery_fee || 0),
-            deliveryFee: Number(o.delivery_fee || 0),
-            discountAmount: 0,
-            total: Number(o.total_amount || 0),
-            paymentMethod: o.payment_method || 'bank_transfer',
-            paymentStatus: o.payment_status || 'pending',
-            status: o.status || 'placed',
-            trackingHistory: o.tracking_history || [],
-            createdAt: o.created_at || new Date().toISOString().split('T')[0],
-            estimatedDelivery: '24-48 Hours from Dispatch',
-            includesInstallation: Boolean(o.installation_fee && o.installation_fee > 0),
-            installationFee: o.installation_fee ? Number(o.installation_fee) : 0,
+        const { data: dbSettings } = await fetchStoreSettingsFromSupabase();
+        if (dbSettings) {
+          setStoreSettings((prev) => ({
+            ...prev,
+            storeName: dbSettings.store_name || prev.storeName,
+            tagline: dbSettings.tagline || prev.tagline,
+            phone: dbSettings.phone_number || prev.phone,
+            altPhone: dbSettings.alt_phone || prev.altPhone,
+            whatsappNumber: dbSettings.whatsapp_number || prev.whatsappNumber,
+            email: dbSettings.email || prev.email,
+            address: dbSettings.address || prev.address,
+            openingHours: dbSettings.opening_hours || prev.openingHours,
+            defaultDeliveryFee: dbSettings.default_delivery_fee ?? dbSettings.delivery_fee_other_states ?? prev.defaultDeliveryFee,
+            freeDeliveryThreshold: dbSettings.free_delivery_threshold ?? prev.freeDeliveryThreshold,
+            deliveryRates: (dbSettings.delivery_rates && Object.keys(dbSettings.delivery_rates).length > 0)
+              ? dbSettings.delivery_rates
+              : prev.deliveryRates,
+            bankDetails: (dbSettings.bank_details && dbSettings.bank_details.bankName)
+              ? dbSettings.bank_details
+              : prev.bankDetails,
+            promoCodes: Array.isArray(dbSettings.promo_codes) && dbSettings.promo_codes.length > 0
+              ? dbSettings.promo_codes
+              : prev.promoCodes,
+            socialLinks: (dbSettings.social_links && Object.keys(dbSettings.social_links).length > 0)
+              ? dbSettings.social_links
+              : prev.socialLinks,
           }));
-
-          setOrders(mappedOrders);
         }
-
-        // 4. Fetch Service Requests
-        const { data: dbServices, error: srvErr } = await supabase
-          .from('service_requests')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (!srvErr && dbServices && dbServices.length > 0) {
-          const mappedServices: ServiceRequest[] = dbServices.map((s: any) => ({
-            id: s.id,
-            ticketNumber: s.ticket_number,
-            serviceId: s.service_type || 'srv-electrical',
-            serviceName: s.service_name || 'Electrical Installation',
-            customerName: s.customer_name || 'Customer',
-            email: s.customer_email || '',
-            phone: s.customer_phone || '',
-            state: s.location?.state || 'Lagos',
-            city: s.location?.city || 'Lagos',
-            address: s.location?.address || '',
-            preferredDate: s.preferred_date || '',
-            preferredTimeSlot: s.preferred_time || 'Morning',
-            description: s.description || '',
-            status: s.status || 'new',
-            assignedTechnician: s.assigned_technician,
-            internalNotes: s.admin_notes,
-            createdAt: s.created_at || new Date().toISOString().split('T')[0],
-          }));
-          setServiceRequests(mappedServices);
-        }
-
       } catch (err) {
-        console.warn('Supabase initial fetch notice:', err);
+        console.warn('Supabase public catalog fetch notice:', err);
       }
     };
 
-    fetchSupabaseData();
+    fetchPublicStoreData();
 
-    // Realtime Postgres changes subscription: instantly reflects any additions or deletions in Supabase
     const realtimeChannel = supabase
       .channel('public_products_live_sync')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
-        () => {
-          fetchSupabaseData();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'categories' },
-        () => {
-          fetchSupabaseData();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        fetchPublicStoreData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+        fetchPublicStoreData();
+      })
       .subscribe();
 
-    // Revalidate immediately whenever the browser window/tab gains focus
     const handleFocus = () => {
-      fetchSupabaseData();
+      fetchPublicStoreData();
     };
 
     if (typeof window !== 'undefined') {
@@ -996,7 +895,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       supabase.removeChannel(realtimeChannel);
     };
   }, []);
-
 
   // Popstate listener to keep currentView in sync with browser navigation
   useEffect(() => {
@@ -1023,7 +921,49 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Scroll to top on view change & sync URL
+  // Strict Route Access Control Enforcement
+  const ADMIN_PROTECTED_VIEWS: ViewState[] = ['admin', 'admin-login', 'admin-signup', 'admin-dashboard', 'admin-products'];
+
+  useEffect(() => {
+    if (isAuthChecking) return;
+
+    // 1. Logged-in Customer attempting to visit ANY admin route -> redirect immediately to Customer Dashboard
+    if (currentUser && !isAdmin && ADMIN_PROTECTED_VIEWS.includes(currentView)) {
+      setCurrentView('account');
+      if (typeof window !== 'undefined' && window.history) {
+        try {
+          window.history.replaceState({ view: 'account' }, '', '/account');
+        } catch {}
+      }
+      showToast('Access Denied: Customers cannot access administrator portals.', 'error');
+      return;
+    }
+
+    // 2. Unauthenticated visitor attempting to access Admin Dashboard or Products -> redirect to Admin Login
+    if (!currentUser && (currentView === 'admin-dashboard' || currentView === 'admin-products')) {
+      setCurrentView('admin-login');
+      if (typeof window !== 'undefined' && window.history) {
+        try {
+          window.history.replaceState({ view: 'admin-login' }, '', '/admin');
+        } catch {}
+      }
+      return;
+    }
+
+    // 3. Unauthenticated visitor attempting to access Wishlist -> redirect to Customer Login (/account)
+    if (!currentUser && currentView === 'wishlist') {
+      setCurrentView('account');
+      if (typeof window !== 'undefined' && window.history) {
+        try {
+          window.history.replaceState({ view: 'account' }, '', '/account');
+        } catch {}
+      }
+      showToast('Please sign in to access your saved wishlist.', 'info');
+      return;
+    }
+  }, [currentView, currentUser, isAdmin, isAuthChecking]);
+
+  // Scroll to top on view change & sync URL with access guards
   const navigateTo = (
     view: ViewState,
     params?: {
@@ -1037,6 +977,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       token?: string;
     }
   ) => {
+    // Route guard check prior to navigation
+    if (!isAuthChecking) {
+      if (currentUser && !isAdmin && ADMIN_PROTECTED_VIEWS.includes(view)) {
+        showToast('Access Denied: Administrator portal is restricted.', 'error');
+        view = 'account';
+      } else if (!currentUser && (view === 'admin-dashboard' || view === 'admin-products')) {
+        view = 'admin-login';
+      } else if (!currentUser && view === 'wishlist') {
+        showToast('Please sign in to access your wishlist.', 'info');
+        view = 'account';
+      }
+    }
+
     if (params?.productId !== undefined) setSelectedProductId(params.productId || null);
     if (params?.serviceId !== undefined) setSelectedServiceId(params.serviceId || null);
     if (params?.categorySlug !== undefined) setSelectedCategorySlug(params.categorySlug || null);
@@ -1058,7 +1011,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       let targetPath = '/';
       if (view === 'admin' || view === 'admin-login') targetPath = '/admin';
       else if (view === 'admin-products') targetPath = '/admin/products';
-      else if (view === 'admin-dashboard') targetPath = '/admin';
+      else if (view === 'admin-dashboard') targetPath = '/admin/dashboard';
       else if (view === 'admin-signup') targetPath = '/admin/signup';
       else if (view === 'account') targetPath = '/account';
       else if (view === 'wishlist') targetPath = '/wishlist';
@@ -1199,27 +1152,167 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return acc + itemPrice * item.quantity;
   }, 0);
 
-  // Wishlist operations
+  // Wishlist operations (Strictly scoped to authenticated user)
   const toggleWishlist = (productId: string) => {
+    if (!currentUser) {
+      showToast('Please sign in to save items to your wishlist.', 'info');
+      navigateTo('account');
+      return;
+    }
     const exists = wishlist.some((item) => item.productId === productId);
     if (exists) {
       setWishlist((prev) => prev.filter((item) => item.productId !== productId));
+      removeCustomerWishlistItem(currentUser.id, productId).catch((e) =>
+        console.warn('Wishlist delete notice:', e)
+      );
       showToast('Removed from wishlist', 'info');
     } else {
       setWishlist((prev) => [...prev, { productId, addedAt: new Date().toISOString() }]);
+      addCustomerWishlistItem(currentUser.id, productId).catch((e) =>
+        console.warn('Wishlist insert notice:', e)
+      );
       showToast('Saved to your wishlist!');
     }
   };
 
   const isInWishlist = (productId: string) => {
+    if (!currentUser) return false;
     return wishlist.some((item) => item.productId === productId);
   };
 
   const removeFromWishlist = (productId: string) => {
+    if (!currentUser) return;
     setWishlist((prev) => prev.filter((item) => item.productId !== productId));
+    removeCustomerWishlistItem(currentUser.id, productId).catch((e) =>
+      console.warn('Wishlist remove notice:', e)
+    );
   };
 
-  const wishlistCount = wishlist.length;
+  const wishlistCount = currentUser ? wishlist.length : 0;
+
+  // Customer Delivery Address CRUD (Strictly scoped to currentUser.id)
+  const addCustomerAddress = async (addr: Omit<UserAddress, 'id'>): Promise<boolean> => {
+    if (!currentUser) {
+      showToast('Please sign in to manage delivery addresses.', 'error');
+      return false;
+    }
+    const newId = generateUuid();
+    const shouldBeDefault = addr.isDefault || customerAddresses.length === 0;
+    const newAddr: UserAddress = {
+      ...addr,
+      id: newId,
+      userId: currentUser.id,
+      fullAddress: addr.streetAddress || addr.fullAddress,
+      streetAddress: addr.streetAddress || addr.fullAddress,
+      isDefault: shouldBeDefault,
+    };
+
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await upsertCustomerAddressInSupabase(currentUser.id, {
+        id: newId,
+        title: newAddr.title,
+        fullName: newAddr.fullName || currentUser.fullName,
+        streetAddress: newAddr.streetAddress || newAddr.fullAddress,
+        city: newAddr.city,
+        state: newAddr.state,
+        phone: newAddr.phone,
+        isDefault: shouldBeDefault,
+      });
+      if (error) {
+        showToast(`Could not save address: ${error.message}`, 'error');
+        return false;
+      }
+      if (data) {
+        newAddr.id = String(data.id);
+      }
+    }
+
+    setCustomerAddresses((prev) => {
+      const reset = shouldBeDefault ? prev.map((a) => ({ ...a, isDefault: false })) : prev;
+      return [newAddr, ...reset];
+    });
+    if (shouldBeDefault) {
+      await updateCustomerProfileInSupabase(currentUser.id, {
+        defaultAddress: {
+          streetAddress: newAddr.streetAddress || newAddr.fullAddress,
+          city: newAddr.city,
+          state: newAddr.state,
+        },
+      });
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              defaultAddress: {
+                streetAddress: newAddr.streetAddress || newAddr.fullAddress,
+                city: newAddr.city,
+                state: newAddr.state,
+              },
+            }
+          : prev
+      );
+    }
+    showToast('Delivery address saved!');
+    return true;
+  };
+
+  const updateCustomerAddress = async (addr: UserAddress): Promise<boolean> => {
+    if (!currentUser) return false;
+    const cleanStreet = addr.streetAddress || addr.fullAddress;
+
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await upsertCustomerAddressInSupabase(currentUser.id, {
+        id: addr.id,
+        title: addr.title,
+        fullName: addr.fullName || currentUser.fullName,
+        streetAddress: cleanStreet,
+        city: addr.city,
+        state: addr.state,
+        phone: addr.phone,
+        isDefault: addr.isDefault,
+      });
+      if (error) {
+        showToast(`Could not update address: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    setCustomerAddresses((prev) =>
+      prev.map((a) => {
+        if (a.id === addr.id) {
+          return { ...addr, streetAddress: cleanStreet, fullAddress: cleanStreet };
+        }
+        return addr.isDefault ? { ...a, isDefault: false } : a;
+      })
+    );
+    if (addr.isDefault) {
+      setCurrentUser((prev) =>
+        prev ? { ...prev, defaultAddress: { streetAddress: cleanStreet, city: addr.city, state: addr.state } } : prev
+      );
+    }
+    showToast('Delivery address updated!');
+    return true;
+  };
+
+  const deleteCustomerAddress = async (addressId: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await deleteCustomerAddressInSupabase(currentUser.id, addressId);
+      if (error) {
+        showToast(`Could not delete address: ${error.message}`, 'error');
+        return false;
+      }
+    }
+    setCustomerAddresses((prev) => prev.filter((a) => a.id !== addressId));
+    showToast('Delivery address removed.', 'info');
+    return true;
+  };
+
+  const setDefaultCustomerAddress = async (addressId: string): Promise<boolean> => {
+    const target = customerAddresses.find((a) => a.id === addressId);
+    if (!target) return false;
+    return await updateCustomerAddress({ ...target, isDefault: true });
+  };
 
   // Orders
   const createOrder = (
@@ -1250,9 +1343,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const finalTotal = orderData.total ?? orderData.totalAmount ?? (calculatedSubtotal - discountAmt + delFee + installFee);
 
     const customerDetails = orderData.customer || {
-      fullName: orderData.customerName || orderData.deliveryAddress?.fullName || 'Valued Customer',
-      email: orderData.customerEmail || (orderData.deliveryAddress as any)?.email || 'customer@ajmantech.ng',
-      phone: orderData.customerPhone || orderData.deliveryAddress?.phone || '',
+      fullName: orderData.customerName || orderData.deliveryAddress?.fullName || currentUser?.fullName || 'Valued Customer',
+      email: orderData.customerEmail || (orderData.deliveryAddress as any)?.email || currentUser?.email || 'customer@ajmantech.ng',
+      phone: orderData.customerPhone || orderData.deliveryAddress?.phone || currentUser?.phone || '',
       address: orderData.deliveryAddress?.streetAddress || orderData.deliveryAddress?.address || '',
       state: orderData.deliveryAddress?.state || 'Lagos',
       city: orderData.deliveryAddress?.city || 'Lagos',
@@ -1264,9 +1357,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const paymentReference = orderData.paymentReference || (isPaidOnline ? `PSTK_TXN_${Date.now()}_${randomNum}` : undefined);
     const paymentChannel = orderData.paymentChannel || (orderData.paymentMethod === 'card' ? 'Debit Card (Paystack)' : orderData.paymentMethod === 'ussd' ? 'USSD Banking' : 'Bank Transfer');
     const paidAt = isPaidOnline ? (orderData.paidAt || new Date().toISOString()) : undefined;
+    const ownerUserId = orderData.userId ?? currentUser?.id ?? null;
 
     const newOrder: Order = {
-      id: orderData.id || ('ord-' + Date.now()),
+      id: orderData.id || generateUuid(),
+      userId: ownerUserId,
       orderNumber,
       receiptNumber,
       items,
@@ -1347,46 +1442,46 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ],
     };
 
-    setOrders((prev) => [newOrder, ...prev]);
+    // Only keep order in current user's state if they are signed in
+    if (currentUser) {
+      setOrders((prev) => [newOrder, ...prev]);
+    }
     clearCart();
     setActiveOrderForSuccess(newOrder);
     showToast(`Order ${orderNumber} placed successfully!`, 'success');
 
-    // Database insertion to Supabase happens EXCLUSIVELY for verified paid Paystack transactions
-    if (
-      isSupabaseConfigured() &&
-      supabase &&
-      newOrder.paymentStatus === 'paid' &&
-      newOrder.paymentReference &&
-      !orderData.skipDatabaseSync
-    ) {
-      supabase
-        .from('orders')
-        .insert({
-          id: newOrder.id,
-          order_number: newOrder.orderNumber,
-          reference: newOrder.paymentReference,
-          customer_name: newOrder.customer.fullName,
-          customer_email: newOrder.customer.email,
-          customer_phone: newOrder.customer.phone,
-          items: newOrder.items,
-          total_amount: newOrder.total,
-          amount: newOrder.total,
-          delivery_fee: newOrder.deliveryFee,
-          payment_method: 'paystack',
-          payment_status: 'paid',
-          delivery_address: {
-            address: newOrder.customer.address,
-            state: newOrder.customer.state,
-            city: newOrder.customer.city,
-          },
-          delivery_notes: newOrder.customer.notes,
-          status: newOrder.status,
-          tracking_history: newOrder.trackingHistory,
-        })
-        .then(({ error }) => {
-          if (error) console.error('Supabase order insert error:', error);
-        });
+    // Persist placed order to Supabase unless explicitly skipped
+    // Paystack orders always carry paymentStatus='paid' & paymentReference (called only from handlePaystackSuccess)
+    if (isSupabaseConfigured() && supabase && !orderData.skipDatabaseSync) {
+      insertOrderInSupabase({
+        id: newOrder.id,
+        user_id: ownerUserId,
+        order_number: newOrder.orderNumber,
+        reference: newOrder.paymentReference || null,
+        customer_name: newOrder.customer.fullName,
+        customer_email: newOrder.customer.email,
+        customer_phone: newOrder.customer.phone,
+        items: newOrder.items,
+        total_amount: newOrder.total,
+        amount: newOrder.total,
+        delivery_fee: newOrder.deliveryFee,
+        installation_fee: newOrder.installationFee || 0,
+        payment_method: isPaidOnline ? 'paystack' : newOrder.paymentMethod,
+        payment_status: newOrder.paymentStatus,
+        delivery_address: {
+          fullName: newOrder.customer.fullName,
+          phone: newOrder.customer.phone,
+          streetAddress: newOrder.customer.address,
+          address: newOrder.customer.address,
+          state: newOrder.customer.state,
+          city: newOrder.customer.city,
+        },
+        delivery_notes: newOrder.customer.notes || null,
+        status: newOrder.status,
+        tracking_history: newOrder.trackingHistory,
+      }).then(({ error }) => {
+        if (error) console.error('Supabase order insert error:', error.message);
+      });
     }
 
     return newOrder;
@@ -1398,6 +1493,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     paymentReference?: string,
     paymentChannel?: string
   ) => {
+    if (!isAdmin) {
+      showToast('Unauthorized: Only administrators can update payment status.', 'error');
+      return;
+    }
+
+    let matchedOrder: Order | undefined;
     setOrders((prev) =>
       prev.map((order) => {
         if (order.id === orderId || order.orderNumber === orderId) {
@@ -1414,7 +1515,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return step;
           });
 
-          return {
+          matchedOrder = {
             ...order,
             paymentStatus,
             paymentReference: paymentReference || order.paymentReference || `AJM_MANUAL_${Date.now()}`,
@@ -1423,10 +1524,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             status: paymentStatus !== 'pending' && order.status === 'placed' ? 'confirmed' : order.status,
             trackingHistory: updatedHistory,
           };
+          return matchedOrder;
         }
         return order;
       })
     );
+
+    if (matchedOrder && isSupabaseConfigured() && supabase) {
+      updateOrderInSupabase(matchedOrder.id, matchedOrder.orderNumber, {
+        payment_status: paymentStatus,
+        reference: matchedOrder.paymentReference,
+        status: matchedOrder.status,
+        tracking_history: matchedOrder.trackingHistory,
+      }).catch((err) => console.error('Supabase payment update error:', err));
+    }
+
     addActivityLog({
       actionType: 'order',
       title: `Payment ${paymentStatus.toUpperCase()}: Order #${orderId}`,
@@ -1436,14 +1548,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     showToast(`Order payment status updated to "${paymentStatus.toUpperCase()}"!`, 'success');
   };
 
-
   const updateOrderStatus = (orderId: string, status: OrderStatus, note?: string) => {
+    if (!isAdmin) {
+      showToast('Unauthorized: Only administrators can update order statuses.', 'error');
+      return;
+    }
+
     let updatedOrder: Order | undefined;
     setOrders((prev) =>
       prev.map((order) => {
-        if (order.id === orderId) {
+        if (order.id === orderId || order.orderNumber === orderId) {
           const timestamp = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const updatedHistory = order.trackingHistory.map((step) => {
+          let updatedHistory = order.trackingHistory.map((step) => {
             if (step.status === status) {
               return {
                 ...step,
@@ -1455,6 +1571,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             return step;
           });
 
+          if (!updatedHistory.some((s) => s.status === status)) {
+            updatedHistory = [
+              ...updatedHistory,
+              {
+                status,
+                title: status === 'cancelled' ? 'Order Cancelled / Rejected' : status.replace(/_/g, ' ').toUpperCase(),
+                description: note || 'Status updated by administrator.',
+                timestamp,
+                completed: true,
+              },
+            ];
+          }
+
           updatedOrder = {
             ...order,
             status,
@@ -1465,27 +1594,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return order;
       })
     );
+
     addActivityLog({
       actionType: 'order',
       title: `Order Status Changed: ${status.replace(/_/g, ' ').toUpperCase()}`,
       details: `Order #${orderId} updated to ${status}. Note: ${note || 'Status updated by administrator'}`,
-      severity: status === 'delivered' ? 'success' : 'info',
+      severity: status === 'delivered' ? 'success' : status === 'cancelled' ? 'warning' : 'info',
     });
     showToast(`Order status updated to "${status.replace(/_/g, ' ').toUpperCase()}"`);
 
-    // Async Supabase Sync
-    if (isSupabaseConfigured() && supabase) {
-      supabase
-        .from('orders')
-        .update({
-          status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', orderId)
-        .then(({ error }) => {
-          if (error) console.error('Supabase order update error:', error);
-        });
+    if (updatedOrder && isSupabaseConfigured() && supabase) {
+      updateOrderInSupabase(updatedOrder.id, updatedOrder.orderNumber, {
+        status,
+        tracking_history: updatedOrder.trackingHistory,
+      }).then(({ error }) => {
+        if (error) console.error('Supabase order update error:', error.message);
+      });
     }
+  };
+
+  const rejectOrder = (orderId: string, reason = 'Rejected by administrator.') => {
+    updateOrderStatus(orderId, 'cancelled', reason);
   };
 
   const getOrderByIdOrNumber = (identifier: string) => {
@@ -1495,174 +1624,191 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
+  const trackOrderSecure = async (orderNumber: string, emailOrRef: string): Promise<Order | null> => {
+    const cleanOrd = orderNumber.trim().toLowerCase();
+    const cleanEmailOrRef = emailOrRef.trim().toLowerCase();
+    if (!cleanOrd || !cleanEmailOrRef) return null;
+
+    // 1. Check customer's already-loaded own orders
+    const localMatch = orders.find(
+      (o) =>
+        o.orderNumber.toLowerCase() === cleanOrd &&
+        (o.customer.email.toLowerCase() === cleanEmailOrRef ||
+          (o.paymentReference && o.paymentReference.toLowerCase() === cleanEmailOrRef))
+    );
+    if (localMatch) return localMatch;
+
+    // 2. Call privacy-preserving SECURITY DEFINER RPC in Supabase
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await trackOrderSecureInSupabase(orderNumber, emailOrRef);
+      if (!error && data) {
+        return mapDbOrderRow(data);
+      }
+    }
+
+    return null;
+  };
+
   // Service Requests
   const createServiceRequest = (
     requestData: Omit<ServiceRequest, 'id' | 'ticketNumber' | 'createdAt' | 'status'>
   ): ServiceRequest => {
     const randomTicket = Math.floor(1000 + Math.random() * 9000);
     const ticketNumber = `SRV-${randomTicket}`;
+    const ownerUserId = requestData.userId ?? currentUser?.id ?? null;
+
     const newRequest: ServiceRequest = {
       ...requestData,
-      id: 'srv-req-' + Date.now(),
+      userId: ownerUserId,
+      id: generateUuid(),
       ticketNumber,
       status: 'new',
       createdAt: new Date().toISOString().split('T')[0],
     };
 
-    setServiceRequests((prev) => [newRequest, ...prev]);
+    if (currentUser) {
+      setServiceRequests((prev) => [newRequest, ...prev]);
+    }
     showToast(`Service Request ${ticketNumber} logged! AjmanTech team will call you.`);
 
-    // Async Supabase Sync
     if (isSupabaseConfigured() && supabase) {
-      supabase
-        .from('service_requests')
-        .insert({
-          id: newRequest.id,
-          ticket_number: newRequest.ticketNumber,
-          customer_name: newRequest.customerName,
-          customer_phone: newRequest.phone,
-          customer_email: newRequest.email,
-          service_type: newRequest.serviceId,
-          service_name: newRequest.serviceName,
-          description: newRequest.description,
-          location: {
-            state: newRequest.state,
-            city: newRequest.city,
-            address: newRequest.address,
-          },
-          preferred_date: newRequest.preferredDate,
-          preferred_time: newRequest.preferredTimeSlot,
-          status: newRequest.status,
-        })
-
-        .then(({ error }) => {
-          if (error) console.error('Supabase service request insert error:', error);
-        });
+      insertServiceRequestInSupabase({
+        id: newRequest.id,
+        user_id: ownerUserId,
+        ticket_number: newRequest.ticketNumber,
+        customer_name: newRequest.customerName,
+        customer_phone: newRequest.phone,
+        customer_email: newRequest.email,
+        service_type: newRequest.serviceId,
+        service_name: newRequest.serviceName,
+        description: newRequest.description,
+        location: {
+          state: newRequest.state,
+          city: newRequest.city,
+          address: newRequest.address,
+        },
+        preferred_date: newRequest.preferredDate,
+        preferred_time: newRequest.preferredTimeSlot,
+        status: newRequest.status,
+      }).then(({ error }) => {
+        if (error) console.error('Supabase service request insert error:', error.message);
+      });
     }
 
     return newRequest;
   };
 
-
   const updateServiceRequestStatus = (
     requestId: string,
     status: ServiceRequest['status'],
     notes?: string,
-    assignedTech?: string
+    assignedTech?: string,
+    preferredDate?: string,
+    preferredTimeSlot?: string
   ) => {
+    if (!isAdmin) {
+      showToast('Unauthorized: Only administrators can update service requests.', 'error');
+      return;
+    }
+
+    let matchedTicket = '';
     setServiceRequests((prev) =>
       prev.map((req) => {
-        if (req.id === requestId) {
+        if (req.id === requestId || req.ticketNumber === requestId) {
+          matchedTicket = req.ticketNumber;
           return {
             ...req,
             status,
-            internalNotes: notes ?? req.internalNotes,
-            assignedTechnician: assignedTech ?? req.assignedTechnician,
+            internalNotes: notes !== undefined ? notes : req.internalNotes,
+            assignedTechnician: assignedTech !== undefined ? assignedTech : req.assignedTechnician,
+            preferredDate: preferredDate !== undefined ? preferredDate : req.preferredDate,
+            preferredTimeSlot: preferredTimeSlot !== undefined ? preferredTimeSlot : req.preferredTimeSlot,
           };
         }
         return req;
       })
     );
-    showToast('Service ticket updated successfully!');
+
+    if (isSupabaseConfigured() && supabase) {
+      updateServiceRequestInSupabase(requestId, matchedTicket, {
+        status,
+        admin_notes: notes,
+        assigned_technician: assignedTech,
+        preferred_date: preferredDate,
+        preferred_time: preferredTimeSlot,
+      }).then(({ error }) => {
+        if (error) console.error('Supabase service request update error:', error.message);
+      });
+    }
+
+    addActivityLog({
+      actionType: 'service',
+      title: `Service Ticket Updated: ${matchedTicket || requestId}`,
+      details: `Status -> ${status}${assignedTech ? ` • Technician: ${assignedTech}` : ''}${preferredDate ? ` • Scheduled: ${preferredDate}` : ''}`,
+      severity: status === 'completed' || status === 'scheduled' ? 'success' : 'info',
+    });
+    showToast('Service request updated successfully!');
   };
 
-  // Customer Auth
-  const login = (emailOrPhone: string, pass: string): { success: boolean; message: string } => {
-    const input = emailOrPhone.trim().toLowerCase();
-
-    // 1. Search existing registered customers in store
-    const found = registeredUsers.find(
-      (u) => u.email.toLowerCase() === input || u.phone.trim() === emailOrPhone.trim()
-    );
-
-    if (found) {
-      if (found.password && found.password !== pass) {
-        return { success: false, message: 'Incorrect password. Please verify and try again.' };
-      }
-
-      const sessionUser: UserAccount = {
-        id: found.id,
-        fullName: found.fullName,
-        email: found.email,
-        phone: found.phone,
-        role: 'customer',
-        addresses: found.addresses || [],
-        createdAt: found.createdAt ? found.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
-      };
-      setCurrentUser(sessionUser);
-      showToast(`Welcome back, ${sessionUser.fullName}!`);
-      return { success: true, message: 'Login successful' };
+  // Customer Authentication via Supabase Auth (never trusts client-side role elevation)
+  const login = async (
+    emailOrPhone: string,
+    pass: string
+  ): Promise<{ success: boolean; message: string; role?: 'admin' | 'customer' }> => {
+    const cleanEmail = emailOrPhone.trim();
+    if (!cleanEmail || !pass) {
+      return { success: false, message: 'Please enter your email address and password.' };
     }
 
-    // 2. Allow direct customer sign-in with valid email or phone
-    if ((input.includes('@') || emailOrPhone.trim().length >= 10) && pass.length >= 4) {
-      const generatedName = input.includes('@')
-        ? input.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        : 'AjmanTech Customer';
-      
-      const newCustomer = {
-        id: 'usr-' + Date.now(),
-        fullName: generatedName,
-        email: input.includes('@') ? input : `${emailOrPhone.trim()}@customer.ajmantech.ng`,
-        phone: input.includes('@') ? '+234 802 345 6789' : emailOrPhone.trim(),
-        password: pass,
-        createdAt: new Date().toISOString(),
-        addresses: [],
+    if (!isSupabaseConfigured() || !supabase) {
+      return {
+        success: false,
+        message: 'Supabase authentication is required to sign in securely. Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
       };
-
-      setRegisteredUsers((prev) => [newCustomer, ...prev]);
-
-      const sessionUser: UserAccount = {
-        id: newCustomer.id,
-        fullName: newCustomer.fullName,
-        email: newCustomer.email,
-        phone: newCustomer.phone,
-        role: 'customer',
-        addresses: [],
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      setCurrentUser(sessionUser);
-      showToast(`Welcome to AjmanTech, ${sessionUser.fullName}!`);
-      return { success: true, message: 'Login successful' };
     }
 
-    return {
-      success: false,
-      message: 'Account not found. Please create a customer account with your name and email.',
+    const res = await signInCustomerWithSupabase(cleanEmail, pass);
+    if (!res.success || !res.user || !res.profile) {
+      return { success: false, message: res.message || 'Invalid email or password.' };
+    }
+
+    const account: UserAccount = {
+      id: res.profile.id,
+      fullName: res.profile.fullName,
+      email: res.profile.email,
+      phone: res.profile.phone,
+      role: res.role || 'customer',
+      addresses: [],
+      defaultAddress: res.profile.defaultAddress,
+      createdAt: res.profile.createdAt
+        ? String(res.profile.createdAt).split('T')[0]
+        : new Date().toISOString().split('T')[0],
     };
+
+    setCurrentUser(account);
+    const verifiedAdmin = res.role === 'admin';
+    setIsAdmin(verifiedAdmin);
+
+    if (verifiedAdmin) {
+      await loadAdminScopedData();
+      showToast(`Welcome back, ${account.fullName}! Redirecting to Admin Control Center.`);
+      return { success: true, message: 'Admin sign in successful', role: 'admin' };
+    } else {
+      await loadCustomerScopedData(account.id);
+      showToast(`Welcome back, ${account.fullName}!`);
+      return { success: true, message: 'Login successful', role: 'customer' };
+    }
   };
 
-  const loginWithGoogle = (googleUser?: { fullName?: string; email: string }): { success: boolean; message: string } => {
-    const targetEmail = (googleUser?.email || 'customer@gmail.com').trim().toLowerCase();
-    const targetName = googleUser?.fullName?.trim() || 
-      targetEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-    let existing = registeredUsers.find((u) => u.email.toLowerCase() === targetEmail);
-    if (!existing) {
-      existing = {
-        id: 'usr-g-' + Date.now(),
-        fullName: targetName,
-        email: targetEmail,
-        phone: '+234 800 000 0000',
-        createdAt: new Date().toISOString(),
-        addresses: [],
+  const loginWithGoogle = async (): Promise<{ success: boolean; message: string }> => {
+    const res = await signInCustomerWithGoogleOAuth();
+    if (!res.success) {
+      return {
+        success: false,
+        message: res.message || 'Unable to sign in with Google.',
       };
-      setRegisteredUsers((prev) => [existing!, ...prev]);
     }
-
-    const sessionUser: UserAccount = {
-      id: existing.id,
-      fullName: existing.fullName,
-      email: existing.email,
-      phone: existing.phone,
-      role: 'customer',
-      addresses: existing.addresses || [],
-      createdAt: existing.createdAt ? existing.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
-    };
-
-    setCurrentUser(sessionUser);
-    showToast(`Signed in with Google as ${sessionUser.fullName}!`);
-    return { success: true, message: 'Signed in with Google' };
+    return { success: true, message: 'Redirecting to Google authentication...' };
   };
 
   const adminLogin = async (email: string, pass: string) => {
@@ -1681,7 +1827,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
       return {
         success: false,
-        message: 'Unauthorized access: Only the site owner can log into this dashboard.',
+        message: 'Unauthorized access: Only verified administrators can log into this dashboard.',
         isPrivilegeDenied: true,
       };
     }
@@ -1690,7 +1836,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (!res.success || !res.user) {
       setIsAdmin(false);
-      setCurrentUser((prev) => (prev?.role === 'admin' ? null : prev));
+      setCurrentUser(null);
+      clearUserOwnedState();
       addActivityLog({
         actionType: 'security',
         title: 'Admin Login Verification Failed',
@@ -1720,15 +1867,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     setIsAdmin(true);
     setCurrentUser(adminUser);
+    await loadAdminScopedData();
+
     addActivityLog({
       actionType: 'auth',
       title: 'Admin Login Successful',
-      details: 'Verified site owner signed into Control Center via Supabase Auth.',
+      details: 'Verified administrator signed into Control Center via Supabase Auth.',
       adminName: adminUser.fullName,
       adminEmail: adminUser.email,
       severity: 'success',
     });
-    showToast('Welcome back, Engr. Abiodun Ajayi! Control Center loaded.', 'success');
+    showToast('Welcome back! Admin Control Center loaded.', 'success');
     return { success: true, message: 'Admin login successful' };
   };
 
@@ -1744,29 +1893,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addActivityLog({
       actionType: 'auth',
       title: 'Admin Session Closed',
-      details: 'Engr. Abiodun Ajayi safely signed out from Control Center.',
-      adminName: 'Engr. Abiodun Ajayi',
-      adminEmail: TARGET_ADMIN_EMAIL,
+      details: 'Administrator safely signed out from Control Center.',
+      adminName: currentUser?.fullName || 'Administrator',
+      adminEmail: currentUser?.email || TARGET_ADMIN_EMAIL,
       severity: 'info',
     });
     await signOutAdminWithSupabase();
     setIsAdmin(false);
     setCurrentUser(null);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
-      } catch {}
-    }
+    clearUserOwnedState();
     showToast('Logged out of Admin Portal.', 'info');
   };
 
-  const register = (
+  const register = async (
     fullNameOrData: string | { fullName: string; email: string; phone: string; password?: string; role?: string },
     email?: string,
     phone?: string,
     pass?: string
-  ): { success: boolean; message: string } => {
+  ): Promise<{ success: boolean; message: string; requiresEmailConfirmation?: boolean }> => {
     let nameVal = '';
     let emailVal = '';
     let phoneVal = '';
@@ -1788,62 +1932,88 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     emailVal = emailVal.trim().toLowerCase();
     phoneVal = phoneVal.trim();
 
-    if (!nameVal || !emailVal) {
-      return { success: false, message: 'Please provide your full name and email address.' };
+    if (!nameVal || !emailVal || !passVal || passVal.length < 6) {
+      return {
+        success: false,
+        message: 'Please provide your full name, valid email address, and a password of at least 6 characters.',
+      };
     }
 
-    // Check if account already registered
-    const existing = registeredUsers.find(
-      (u) => u.email.toLowerCase() === emailVal || (phoneVal && u.phone === phoneVal)
-    );
-    if (existing) {
-      return { success: false, message: 'An account with this email address already exists. Please sign in.' };
+    if (!isSupabaseConfigured() || !supabase) {
+      return {
+        success: false,
+        message: 'Supabase authentication is required to register an account securely.',
+      };
     }
 
-    const newCustomer = {
-      id: 'usr-' + Date.now(),
+    const res = await signUpCustomerWithSupabase({
       fullName: nameVal,
       email: emailVal,
-      phone: phoneVal || '+234 800 000 0000',
+      phone: phoneVal,
       password: passVal,
-      createdAt: new Date().toISOString(),
-      addresses: [],
-    };
+    });
 
-    setRegisteredUsers((prev) => [newCustomer, ...prev]);
+    if (!res.success) {
+      return { success: false, message: res.message };
+    }
 
-    const sessionUser: UserAccount = {
-      id: newCustomer.id,
-      fullName: newCustomer.fullName,
-      email: newCustomer.email,
-      phone: newCustomer.phone,
-      role: 'customer',
-      addresses: [],
-      createdAt: new Date().toISOString().split('T')[0],
-    };
+    if (res.requiresEmailConfirmation) {
+      showToast(res.message, 'info');
+      return {
+        success: true,
+        requiresEmailConfirmation: true,
+        message: res.message,
+      };
+    }
 
-    setCurrentUser(sessionUser);
-    showToast(`Account successfully created! Welcome, ${sessionUser.fullName}.`);
-    return { success: true, message: 'Registration successful' };
+    if (res.user && res.profile) {
+      const account: UserAccount = {
+        id: res.profile.id,
+        fullName: res.profile.fullName,
+        email: res.profile.email,
+        phone: res.profile.phone,
+        role: 'customer',
+        addresses: [],
+        createdAt: res.profile.createdAt
+          ? String(res.profile.createdAt).split('T')[0]
+          : new Date().toISOString().split('T')[0],
+      };
+      setIsAdmin(false);
+      setCurrentUser(account);
+      await loadCustomerScopedData(account.id);
+      showToast(`Account successfully created! Welcome, ${account.fullName}.`);
+    }
+
+    return { success: true, message: res.message };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await signOutWithSupabase();
     setCurrentUser(null);
     setIsAdmin(false);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        localStorage.removeItem(STORAGE_KEYS.IS_ADMIN);
-      } catch {}
-    }
+    clearUserOwnedState();
     showToast('Signed out successfully', 'info');
   };
 
-  const updateUserProfile = (updated: Partial<UserAccount>) => {
+  const updateUserProfile = async (updated: Partial<UserAccount>) => {
     if (!currentUser) return;
-    const updatedUser = { ...currentUser, ...updated };
+    // Never allow client profile edits to alter user role
+    const { role: _ignoredRole, id: _ignoredId, ...safeUpdates } = updated;
+    const updatedUser = { ...currentUser, ...safeUpdates };
     setCurrentUser(updatedUser);
-    showToast('Profile updated successfully!');
+
+    if (isSupabaseConfigured() && supabase) {
+      const res = await updateCustomerProfileInSupabase(currentUser.id, {
+        fullName: safeUpdates.fullName,
+        phone: safeUpdates.phone,
+        defaultAddress: safeUpdates.defaultAddress,
+      });
+      if (!res.success) {
+        showToast(`Could not save profile changes: ${res.error}`, 'error');
+        return;
+      }
+    }
+    showToast('Profile details updated successfully!');
   };
 
   // Product CRUD
@@ -2371,8 +2541,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return reviews.filter((r) => r.productId === productId);
   };
 
-  const updateStoreSettings = (newSettings: StoreSettings) => {
+  const updateStoreSettings = async (newSettings: StoreSettings) => {
     setStoreSettings(newSettings);
+    if (isAdmin && isSupabaseConfigured() && supabase) {
+      const { error } = await upsertStoreSettingsInSupabase(newSettings);
+      if (error) {
+        console.warn('Supabase store settings upsert notice:', error.message);
+      }
+    }
     addActivityLog({
       actionType: 'settings',
       title: 'Store Settings Saved',
@@ -2432,11 +2608,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         removeFromWishlist,
         wishlistCount,
 
+        customerAddresses,
+        addCustomerAddress,
+        updateCustomerAddress,
+        deleteCustomerAddress,
+        setDefaultCustomerAddress,
+
+        adminCustomers,
+        refreshAdminCustomerData,
+
         orders,
         createOrder,
         updateOrderStatus,
+        rejectOrder,
         updateOrderPaymentStatus,
         getOrderByIdOrNumber,
+        trackOrderSecure,
 
         serviceRequests,
         createServiceRequest,
