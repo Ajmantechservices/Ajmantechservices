@@ -22,17 +22,21 @@ ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS delivery_rates jsonb 
 ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS promo_codes jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.store_settings ADD COLUMN IF NOT EXISTS social_links jsonb DEFAULT '{}'::jsonb;
 
--- 2. Backfill user_id on historical orders & service_requests where email matches an auth user
+-- 2. Backfill user_id on historical orders & service_requests only where the auth user email is confirmed
 UPDATE public.orders o
 SET user_id = u.id
 FROM auth.users u
 WHERE o.user_id IS NULL
+  AND u.email_confirmed_at IS NOT NULL
+  AND o.customer_email IS NOT NULL
   AND lower(trim(o.customer_email)) = lower(trim(u.email));
 
 UPDATE public.service_requests s
 SET user_id = u.id
 FROM auth.users u
 WHERE s.user_id IS NULL
+  AND u.email_confirmed_at IS NOT NULL
+  AND s.customer_email IS NOT NULL
   AND lower(trim(s.customer_email)) = lower(trim(u.email));
 
 -- 3. Create customer-owned addresses and wishlists tables
@@ -62,7 +66,7 @@ CREATE TABLE IF NOT EXISTS public.customer_wishlists (
 
 CREATE INDEX IF NOT EXISTS idx_customer_wishlists_user_id ON public.customer_wishlists(user_id);
 
--- 4. Server-verified Admin helper checking JWT app_metadata.role ONLY
+-- 4. Server-verified Admin helper checking JWT app_metadata.role OR protected public.profiles.role
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
 LANGUAGE sql
@@ -70,7 +74,14 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin';
+  SELECT
+    lower(coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '')) IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    );
 $$;
 
 -- Ensure designated primary owner carries app_metadata.role = 'admin' in auth.users
@@ -86,7 +97,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF new.role IS DISTINCT FROM old.role THEN
+  IF new.role::text IS DISTINCT FROM old.role::text THEN
     IF NOT public.is_admin() AND current_user NOT IN ('postgres', 'supabase_admin', 'service_role') THEN
       RAISE EXCEPTION 'Unauthorized: role cannot be modified by non-administrator';
     END IF;
@@ -173,7 +184,7 @@ CREATE POLICY "Profiles: own or admin select"
 DROP POLICY IF EXISTS "Profiles: own insert" ON public.profiles;
 CREATE POLICY "Profiles: own insert"
   ON public.profiles FOR INSERT
-  WITH CHECK (auth.uid() = id AND role = 'customer');
+  WITH CHECK (auth.uid() = id AND lower(coalesce(role::text, 'customer')) = 'customer');
 
 DROP POLICY IF EXISTS "Profiles: own or admin update" ON public.profiles;
 CREATE POLICY "Profiles: own or admin update"
@@ -292,10 +303,10 @@ CREATE POLICY "Wishlists: own delete"
   ON public.customer_wishlists FOR DELETE
   USING (auth.uid() = user_id);
 
--- Privacy-preserving Order Tracking RPC
+-- Administrator-Only Order Lookup RPC (restricted to verified admins)
 CREATE OR REPLACE FUNCTION public.track_order_secure(
   p_order_number text,
-  p_email_or_token text
+  p_email_or_token text DEFAULT ''
 )
 RETURNS TABLE (
   id text,
@@ -316,11 +327,17 @@ RETURNS TABLE (
   tracking_history jsonb,
   created_at timestamp with time zone
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Administrator access is required to look up orders.';
+  END IF;
+
+  RETURN QUERY
   SELECT
     o.id::text,
     o.order_number,
@@ -341,11 +358,16 @@ AS $$
     o.created_at
   FROM public.orders o
   WHERE lower(trim(o.order_number)) = lower(trim(p_order_number))
-    AND (
-      lower(trim(o.customer_email)) = lower(trim(p_email_or_token))
-      OR lower(trim(coalesce(o.reference, ''))) = lower(trim(p_email_or_token))
-    )
+     OR (
+       coalesce(trim(p_email_or_token), '') <> ''
+       AND (
+         lower(trim(o.customer_email)) = lower(trim(p_email_or_token))
+         OR lower(trim(coalesce(o.reference, ''))) = lower(trim(p_email_or_token))
+       )
+     )
   LIMIT 1;
+END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.track_order_secure(text, text) TO anon, authenticated;
+REVOKE ALL ON FUNCTION public.track_order_secure(text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.track_order_secure(text, text) TO authenticated;

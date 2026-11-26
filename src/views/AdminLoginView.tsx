@@ -15,10 +15,16 @@ import {
   signUpAdminWithSupabase,
 } from '../lib/supabase';
 
-const SQL_TRIGGER_CODE = `-- 1. Hardened admin check reading server-controlled app_metadata ONLY
+const SQL_TRIGGER_CODE = `-- 1. Hardened admin check reading server-controlled app_metadata OR protected profiles.role
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin', false);
+  SELECT
+    lower(coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '')) IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    );
 $$;
 
 -- 2. Trigger assigns admin strictly from app_metadata or owner email (never user_metadata)
@@ -53,7 +59,12 @@ export const AdminLoginView: React.FC = () => {
     currentUser,
     currentView,
   } = useStore();
-  const postLoginView = currentView === 'admin-products' ? 'admin-products' : 'admin-dashboard';
+  const postLoginView =
+    currentView === 'track-order'
+      ? 'track-order'
+      : currentView === 'admin-products'
+      ? 'admin-products'
+      : 'admin-dashboard';
 
   // Auth Mode: 'signin' | 'signup'
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -90,11 +101,7 @@ export const AdminLoginView: React.FC = () => {
       navigateTo('account');
       return;
     }
-    if (
-      storeIsAdmin &&
-      currentUser?.role === 'admin' &&
-      currentUser?.email?.toLowerCase().trim() === TARGET_ADMIN_EMAIL.toLowerCase()
-    ) {
+    if (storeIsAdmin && currentUser?.role === 'admin') {
       navigateTo(postLoginView);
     }
   }, [isAuthChecking, storeIsAdmin, currentUser, navigateTo, postLoginView]);

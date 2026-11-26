@@ -269,14 +269,16 @@ export const Footer: React.FC = () => {
               Customer Care
             </h3>
             <ul className="space-y-2 text-xs text-blue-100 font-light">
-              <li>
-                <button
-                  onClick={() => navigateTo('track-order')}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  📦 Track Your Order
-                </button>
-              </li>
+              {isAdmin && (
+                <li>
+                  <button
+                    onClick={() => navigateTo('track-order')}
+                    className="hover:text-amber-300 transition-colors cursor-pointer"
+                  >
+                    📦 Admin Order Lookup
+                  </button>
+                </li>
+              )}
               <li>
                 <button
                   onClick={() => navigateTo('account')}

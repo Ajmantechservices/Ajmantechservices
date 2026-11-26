@@ -274,10 +274,10 @@ async function startServer() {
                   <tr>
                     <td style="padding: 24px; text-align: center;">
                       <p style="margin: 0 0 16px; font-size: 13px; color: #475569;">
-                        You can track live dispatch coordinates anytime using your Order Reference and Email address.
+                        You can view your order status, shipment progress, and receipts anytime in your personal AjmanTech Customer Dashboard.
                       </p>
-                      <a href="${escapeHtml(process.env.APP_URL || 'http://localhost:3000')}/track?ref=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(customerEmail)}" style="display: inline-block; background-color: #0047AB; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; padding: 12px 24px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,71,171,0.25);">
-                        Track Your Order Live
+                      <a href="${escapeHtml(process.env.APP_URL || 'http://localhost:3000')}/account" style="display: inline-block; background-color: #0047AB; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; padding: 12px 24px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,71,171,0.25);">
+                        View My Order Status
                       </a>
                     </td>
                   </tr>

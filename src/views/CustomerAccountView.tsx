@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { UserAddress } from '../types';
+import { OfficialReceiptModal } from '../components/OfficialReceiptModal';
+import { Order } from '../types';
 import {
   User,
   Package,
@@ -21,6 +23,13 @@ import {
   CheckCircle2,
   ShoppingBag,
   Settings,
+  FileText,
+  ShieldAlert,
+  Clock,
+  Truck,
+  X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 const NIGERIAN_STATES = [
@@ -70,6 +79,8 @@ export const CustomerAccountView: React.FC = () => {
     navigateTo,
     showToast,
     isAdmin,
+    accessDeniedMessage,
+    clearAccessDeniedMessage,
   } = useStore();
 
   // Auth form states
@@ -83,6 +94,8 @@ export const CustomerAccountView: React.FC = () => {
 
   // Dashboard Tab state
   const [activeTab, setActiveTab] = useState<'orders' | 'services' | 'addresses' | 'wishlist' | 'profile'>('orders');
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
 
   // Personal Profile Editor state
   const [profileFullName, setProfileFullName] = useState('');
@@ -261,6 +274,25 @@ export const CustomerAccountView: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="max-w-md mx-auto px-4 py-12 sm:py-16 space-y-8">
+        {accessDeniedMessage && (
+          <div
+            role="alert"
+            className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start justify-between gap-3"
+          >
+            <div className="flex items-start gap-2.5">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span className="font-medium leading-relaxed">{accessDeniedMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={clearAccessDeniedMessage}
+              className="text-rose-500 hover:text-rose-700 cursor-pointer shrink-0"
+              aria-label="Dismiss notice"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="text-center space-y-2">
           <div className="w-12 h-12 rounded-full bg-[#0047AB]/10 text-[#0047AB] flex items-center justify-center mx-auto">
             <User className="w-6 h-6" />
@@ -482,6 +514,30 @@ export const CustomerAccountView: React.FC = () => {
   // Logged In: Show Private Customer Dashboard
   return (
     <div id="customer-account-dashboard" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
+      {accessDeniedMessage && (
+        <div
+          id="customer-access-denied-banner"
+          role="alert"
+          className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start justify-between gap-3 shadow-2xs"
+        >
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-rose-900">Access Denied</p>
+              <p className="text-rose-700 font-light mt-0.5">{accessDeniedMessage}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={clearAccessDeniedMessage}
+            className="p-1 text-rose-500 hover:text-rose-800 cursor-pointer shrink-0"
+            aria-label="Dismiss access denied alert"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Profile Header Card */}
       <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-xs">
         <div className="flex items-center gap-4">
@@ -651,23 +707,104 @@ export const CustomerAccountView: React.FC = () => {
                         ))}
                       </div>
 
-                      <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+                      <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
                         <span className="text-[11px] text-slate-500 font-light">
                           Delivery: {ord.deliveryAddress?.streetAddress || ord.customer?.address || 'Address provided at checkout'}, {ord.deliveryAddress?.city || ord.customer?.city || ''}, {ord.deliveryAddress?.state || ord.customer?.state || ''}
                         </span>
-                        <button
-                          onClick={() =>
-                            navigateTo('track-order', {
-                              orderNumber: ord.orderNumber,
-                              email: ord.customer?.email || ord.customerEmail || currentUser?.email,
-                              token: ord.id,
-                            })
-                          }
-                          className="text-xs font-bold text-[#0047AB] hover:text-[#002D72] cursor-pointer shrink-0 ml-2"
-                        >
-                          Track Order &rarr;
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setReceiptOrder(ord)}
+                            className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-[#002D72] text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span>Receipt</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedOrderId((prev) => (prev === ord.id ? null : ord.id))
+                            }
+                            className="px-3.5 py-1.5 rounded-full bg-[#0047AB]/10 hover:bg-[#0047AB]/20 text-[#0047AB] text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <Truck className="w-3 h-3" />
+                            <span>{expandedOrderId === ord.id ? 'Hide Status' : 'View Status'}</span>
+                            {expandedOrderId === ord.id ? (
+                              <ChevronUp className="w-3 h-3" />
+                            ) : (
+                              <ChevronDown className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
                       </div>
+
+                      {expandedOrderId === ord.id && (
+                        <div className="mt-3 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-[#002D72] uppercase tracking-wider text-[11px]">
+                              Order Status & Shipment Progress
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-500">
+                              Payment: <strong className="uppercase text-slate-800">{ord.paymentStatus || 'pending'}</strong>
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[
+                              { key: 'pending', label: 'Order Placed' },
+                              { key: 'processing', label: 'Processing' },
+                              { key: 'shipped', label: 'Dispatched' },
+                              { key: 'delivered', label: 'Delivered' },
+                            ].map((st, idx) => {
+                              const statusRank =
+                                ord.status === 'delivered'
+                                  ? 3
+                                  : ord.status === 'shipped' || ord.status === 'out_for_delivery' || ord.status === 'dispatched'
+                                  ? 2
+                                  : ord.status === 'processing' || ord.status === 'confirmed'
+                                  ? 1
+                                  : ord.status === 'cancelled'
+                                  ? -1
+                                  : 0;
+                              const active = statusRank >= 0 && idx <= statusRank;
+                              return (
+                                <div
+                                  key={st.key}
+                                  className={`p-2.5 rounded-xl border flex items-center gap-1.5 ${
+                                    active
+                                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold'
+                                      : 'bg-white border-slate-200 text-slate-400'
+                                  }`}
+                                >
+                                  {active ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  ) : (
+                                    <Clock className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                                  )}
+                                  <span className="text-[11px] truncate">{st.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {ord.trackingHistory && ord.trackingHistory.length > 0 && (
+                            <div className="space-y-1.5 pt-2 border-t border-slate-200/70">
+                              {ord.trackingHistory.map((step, sIdx) => (
+                                <div key={sIdx} className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
+                                  <span>
+                                    <strong className="text-slate-800">{step.title}:</strong> {step.description}
+                                  </span>
+                                  {step.timestamp && (
+                                    <span className="text-slate-400 shrink-0">
+                                      {new Date(step.timestamp).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1076,6 +1213,14 @@ export const CustomerAccountView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {receiptOrder && (
+        <OfficialReceiptModal
+          isOpen={Boolean(receiptOrder)}
+          onClose={() => setReceiptOrder(null)}
+          order={receiptOrder}
+        />
+      )}
     </div>
   );
 };

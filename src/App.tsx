@@ -42,7 +42,8 @@ const MainRouter: React.FC = () => {
       currentView === 'admin-login' ||
       currentView === 'admin-signup' ||
       currentView === 'admin-dashboard' ||
-      currentView === 'admin-products';
+      currentView === 'admin-products' ||
+      currentView === 'track-order';
 
     if (isAuthChecking && (isAdminRoute || currentView === 'wishlist' || currentView === 'account')) {
       return (
@@ -80,7 +81,7 @@ const MainRouter: React.FC = () => {
       case 'order-success':
         return <OrderSuccessView />;
       case 'track-order':
-        return <TrackOrderView />;
+        return isAdmin ? <TrackOrderView /> : <AdminLoginView />;
       case 'account':
         return <CustomerAccountView />;
       case 'wishlist':

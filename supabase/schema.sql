@@ -21,7 +21,7 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists phone text;
 alter table public.profiles add column if not exists default_address jsonb default '{}'::jsonb;
 
--- Verified admin helper: strictly inspects JWT app_metadata.role (server-controlled).
+-- Verified admin helper: inspects server-controlled app_metadata.role and protected profiles.role.
 -- NEVER trusts user_metadata or client-supplied role claims.
 create or replace function public.is_admin()
 returns boolean
@@ -30,7 +30,14 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin';
+  select
+    lower(coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '')) in ('admin', 'administrator')
+    or exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and lower(coalesce(p.role::text, '')) in ('admin', 'administrator')
+    );
 $$;
 
 -- Prevent non-admin users from escalating their own role in public.profiles
@@ -41,7 +48,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.role is distinct from old.role then
+  if new.role::text is distinct from old.role::text then
     if not public.is_admin() and current_user not in ('postgres', 'supabase_admin', 'service_role') then
       raise exception 'Unauthorized: role cannot be modified by non-administrator';
     end if;
@@ -350,7 +357,7 @@ create policy "Profiles: own or admin select"
 drop policy if exists "Profiles: own insert" on public.profiles;
 create policy "Profiles: own insert"
   on public.profiles for insert
-  with check (auth.uid() = id and role = 'customer');
+  with check (auth.uid() = id and lower(coalesce(role::text, 'customer')) = 'customer');
 
 drop policy if exists "Profiles: own or admin update" on public.profiles;
 create policy "Profiles: own or admin update"
@@ -521,10 +528,10 @@ create policy "Wishlists: own delete"
   on public.customer_wishlists for delete
   using (auth.uid() = user_id);
 
--- Privacy-preserving Order Tracking RPC (requires matching order number AND email or payment reference)
+-- Admin-Only Order Tracking RPC (strictly rejects non-administrators and anonymous users)
 create or replace function public.track_order_secure(
   p_order_number text,
-  p_email_or_token text
+  p_email_or_token text default ''
 )
 returns table (
   id text,
@@ -545,11 +552,17 @@ returns table (
   tracking_history jsonb,
   created_at timestamp with time zone
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Unauthorized: Administrator access is required to look up orders.';
+  end if;
+
+  return query
   select
     o.id::text,
     o.order_number,
@@ -570,11 +583,16 @@ as $$
     o.created_at
   from public.orders o
   where lower(trim(o.order_number)) = lower(trim(p_order_number))
-    and (
-      lower(trim(o.customer_email)) = lower(trim(p_email_or_token))
-      or lower(trim(coalesce(o.reference, ''))) = lower(trim(p_email_or_token))
-    )
+     or (
+       coalesce(trim(p_email_or_token), '') <> ''
+       and (
+         lower(trim(o.customer_email)) = lower(trim(p_email_or_token))
+         or lower(trim(coalesce(o.reference, ''))) = lower(trim(p_email_or_token))
+       )
+     )
   limit 1;
+end;
 $$;
 
-grant execute on function public.track_order_secure(text, text) to anon, authenticated;
+revoke all on function public.track_order_secure(text, text) from public, anon;
+grant execute on function public.track_order_secure(text, text) to authenticated;

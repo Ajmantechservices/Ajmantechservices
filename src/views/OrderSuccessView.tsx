@@ -23,18 +23,23 @@ export const OrderSuccessView: React.FC = () => {
   const {
     navigationState,
     orders,
+    activeOrderForSuccess,
     formatNaira,
     navigateTo,
     openWhatsApp,
     storeSettings,
     updateOrderPaymentStatus,
+    isAdmin,
   } = useStore();
 
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isPaymentGatewayOpen, setIsPaymentGatewayOpen] = useState(false);
 
   const orderId = navigationState?.orderId;
-  const order = orders.find((o) => o.id === orderId || o.orderNumber === navigationState?.orderNumber) || orders[0];
+  const order =
+    orders.find((o) => o.id === orderId || o.orderNumber === navigationState?.orderNumber) ||
+    activeOrderForSuccess ||
+    orders[0];
 
   if (!order) {
     return (
@@ -289,16 +294,15 @@ export const OrderSuccessView: React.FC = () => {
 
         <button
           onClick={() =>
-            navigateTo('track-order', {
-              orderNumber: order.orderNumber,
-              email: order.customer?.email || order.customerEmail,
-              token: order.id,
-            })
+            navigateTo(
+              isAdmin ? 'track-order' : 'account',
+              isAdmin ? { orderNumber: order.orderNumber } : undefined
+            )
           }
           className="w-full sm:w-auto py-3 px-5 rounded-full bg-slate-100 hover:bg-slate-200 text-[#002D72] font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
         >
           <Package className="w-4 h-4" />
-          <span>Track Order</span>
+          <span>{isAdmin ? 'Open Admin Order Tracker' : 'View My Orders'}</span>
         </button>
       </div>
 

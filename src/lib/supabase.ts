@@ -176,13 +176,24 @@ export function generateUuid(): string {
 }
 
 /**
- * Strictly verifies admin privileges using server-controlled app_metadata.role.
+ * Strictly verifies admin privileges using server-controlled app_metadata.role
+ * or the protected public.profiles.role column (admin / administrator).
  * NEVER trusts user_metadata or client-supplied role values.
  */
-export function isUserVerifiedAdmin(user?: User | null): boolean {
+export function isUserVerifiedAdmin(user?: User | null, profileRole?: string | null): boolean {
   if (!user) return false;
-  const appRole = (user.app_metadata as Record<string, any> | undefined)?.role;
-  return appRole === 'admin';
+  const appRole = String((user.app_metadata as Record<string, any> | undefined)?.role || '')
+    .trim()
+    .toLowerCase();
+  const dbRole = String(profileRole || '')
+    .trim()
+    .toLowerCase();
+  return (
+    appRole === 'admin' ||
+    appRole === 'administrator' ||
+    dbRole === 'admin' ||
+    dbRole === 'administrator'
+  );
 }
 
 export interface CustomerAuthResult {
@@ -207,7 +218,7 @@ export interface CustomerAuthResult {
 
 /**
  * Verifies the active Supabase session directly with Supabase Auth server (getUser)
- * and resolves the user's profile and verified role.
+ * and resolves the user's profile and verified role from the profiles table.
  */
 export async function getVerifiedCurrentSession(): Promise<{
   user: User | null;
@@ -231,14 +242,14 @@ export async function getVerifiedCurrentSession(): Promise<{
       return { user: null, role: 'customer', isAdmin: false, profile: null };
     }
 
-    const verifiedAdmin = isUserVerifiedAdmin(verifiedUser);
-    const verifiedRole: 'admin' | 'customer' = verifiedAdmin ? 'admin' : 'customer';
-
     const { data: profileRow } = await supabase
       .from('profiles')
-      .select('id, email, full_name, phone, default_address, created_at')
+      .select('id, email, full_name, phone, role, default_address, created_at')
       .eq('id', verifiedUser.id)
       .maybeSingle();
+
+    const verifiedAdmin = isUserVerifiedAdmin(verifiedUser, profileRow?.role);
+    const verifiedRole: 'admin' | 'customer' = verifiedAdmin ? 'admin' : 'customer';
 
     const fallbackName =
       verifiedUser.user_metadata?.full_name ||
@@ -453,29 +464,14 @@ export async function updateCustomerProfileInSupabase(
 }
 
 /**
- * Sign in administrator using Supabase Auth & strictly verify server-controlled app_metadata.role === 'admin'.
- * Rejects and signs out non-admin accounts or anyone relying solely on user_metadata.
+ * Sign in administrator using Supabase Auth & verify server-controlled
+ * profiles.role ('admin'/'administrator') or app_metadata.role ('admin').
+ * Rejects and signs out non-admin accounts and NEVER trusts user_metadata.
  */
 export async function signInAdminWithSupabase(
   email: string,
   pass: string
 ): Promise<AdminAuthResult> {
-  const normalizedEmail = email.trim().toLowerCase();
-  const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
-
-  if (normalizedEmail !== normalizedTarget) {
-    if (supabase && isSupabaseConfigured()) {
-      try {
-        await supabase.auth.signOut();
-      } catch {}
-    }
-    return {
-      success: false,
-      message: 'Unauthorized access: Only verified administrators can log into this portal.',
-      isPrivilegeDenied: true,
-    };
-  }
-
   if (!supabase || !isSupabaseConfigured()) {
     return {
       success: false,
@@ -496,10 +492,9 @@ export async function signInAdminWithSupabase(
       };
     }
 
-    // Re-verify directly against Supabase Auth server
-    const { data: verifiedData, error: verifyErr } = await supabase.auth.getUser();
-    const verifiedUser = verifiedData?.user;
-    if (verifyErr || !verifiedUser) {
+    // Re-verify directly against Supabase Auth server + public.profiles table
+    const sessionInfo = await getVerifiedCurrentSession();
+    if (!sessionInfo.user) {
       await supabase.auth.signOut();
       return {
         success: false,
@@ -507,12 +502,11 @@ export async function signInAdminWithSupabase(
       };
     }
 
-    const authenticatedEmail = verifiedUser.email?.trim().toLowerCase();
-    if (authenticatedEmail !== normalizedTarget || !isUserVerifiedAdmin(verifiedUser)) {
+    if (!sessionInfo.isAdmin) {
       await supabase.auth.signOut();
       return {
         success: false,
-        message: 'Unauthorized access: Administrator privileges (app_metadata.role = admin) are required.',
+        message: 'Unauthorized access: Administrator privileges in profiles.role are required.',
         isPrivilegeDenied: true,
         role: 'customer',
       };
@@ -521,7 +515,7 @@ export async function signInAdminWithSupabase(
     return {
       success: true,
       message: 'Admin authentication successful.',
-      user: verifiedUser,
+      user: sessionInfo.user,
       role: 'admin',
     };
   } catch (err: any) {
@@ -673,8 +667,8 @@ export async function deleteSupabaseProducts(productIds: string[]) {
 }
 
 /**
- * Check current Supabase auth session & verify server-controlled app_metadata.role === 'admin'.
- * Never signs out valid customer sessions.
+ * Check current Supabase auth session & verify role via protected profiles.role
+ * and server-controlled app_metadata.role. Never signs out valid customer sessions.
  */
 export async function checkAdminAuthSession(): Promise<{
   isAdmin: boolean;
@@ -698,7 +692,13 @@ export async function checkAdminAuthSession(): Promise<{
       return { isAdmin: false, user: null };
     }
 
-    const adminVerified = isUserVerifiedAdmin(verifiedUser);
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', verifiedUser.id)
+      .maybeSingle();
+
+    const adminVerified = isUserVerifiedAdmin(verifiedUser, profileRow?.role);
     return {
       isAdmin: adminVerified,
       user: verifiedUser,
@@ -1147,6 +1147,26 @@ export async function fetchAllOrdersForAdmin() {
   const { data, error } = await supabase
     .from('orders')
     .select('*')
+    .order('created_at', { ascending: false });
+  if (error && isMissingTableError(error)) return { data: [], error: null };
+  return { data: data || [], error };
+}
+
+export async function searchOrdersForAdmin(searchTerm: string) {
+  if (!supabase || !isSupabaseConfigured()) {
+    return { data: [] as any[], error: null };
+  }
+  const clean = searchTerm.trim();
+  if (!clean) {
+    return await fetchAllOrdersForAdmin();
+  }
+  const safePattern = `%${clean.replace(/[,%()]/g, '')}%`;
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .or(
+      `order_number.ilike.${safePattern},reference.ilike.${safePattern},customer_name.ilike.${safePattern},customer_email.ilike.${safePattern},customer_phone.ilike.${safePattern}`
+    )
     .order('created_at', { ascending: false });
   if (error && isMissingTableError(error)) return { data: [], error: null };
   return { data: data || [], error };

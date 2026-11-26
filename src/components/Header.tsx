@@ -464,16 +464,29 @@ export const Header: React.FC = () => {
                         <User className="w-4 h-4 text-slate-400" />
                         My Profile & Dashboard
                       </button>
-                      <button
-                        onClick={() => {
-                          setIsUserMenuOpen(false);
-                          navigateTo('track-order');
-                        }}
-                        className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-[#0047AB] font-medium flex items-center gap-2 cursor-pointer"
-                      >
-                        <Package className="w-4 h-4 text-slate-400" />
-                        Track An Order
-                      </button>
+                      {isAdmin ? (
+                        <button
+                          onClick={() => {
+                            setIsUserMenuOpen(false);
+                            navigateTo('track-order');
+                          }}
+                          className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-[#0047AB] font-medium flex items-center gap-2 cursor-pointer"
+                        >
+                          <Package className="w-4 h-4 text-slate-400" />
+                          Admin Order Lookup
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setIsUserMenuOpen(false);
+                            navigateTo('account');
+                          }}
+                          className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-[#0047AB] font-medium flex items-center gap-2 cursor-pointer"
+                        >
+                          <Package className="w-4 h-4 text-slate-400" />
+                          My Orders
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setIsUserMenuOpen(false);
@@ -690,21 +703,37 @@ export const Header: React.FC = () => {
                 </div>
               </div>
 
-              {/* QUICK ACTIONS: TRACK ORDER & DIRECT HOTLINE (Moved from Top of Website) */}
+              {/* QUICK ACTIONS: MY ORDERS (CUSTOMER) / ADMIN ORDER TRACKER (ADMIN) & HOTLINE */}
               <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    navigateTo('track-order');
-                  }}
-                  className="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200 text-left transition-all cursor-pointer group flex flex-col justify-between"
-                >
-                  <Package className="w-4 h-4 text-[#0047AB] mb-1.5 group-hover:scale-110 transition-transform" />
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">Track Order</p>
-                    <p className="text-[10px] text-slate-500">Live shipment tracking</p>
-                  </div>
-                </button>
+                {isAdmin ? (
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('track-order');
+                    }}
+                    className="p-3 rounded-xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-left transition-all cursor-pointer group flex flex-col justify-between"
+                  >
+                    <Package className="w-4 h-4 text-amber-700 mb-1.5 group-hover:scale-110 transition-transform" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Admin Order Lookup</p>
+                      <p className="text-[10px] text-amber-800">Manage all orders</p>
+                    </div>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigateTo('account');
+                    }}
+                    className="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200 text-left transition-all cursor-pointer group flex flex-col justify-between"
+                  >
+                    <Package className="w-4 h-4 text-[#0047AB] mb-1.5 group-hover:scale-110 transition-transform" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">My Orders</p>
+                      <p className="text-[10px] text-slate-500">View your order status</p>
+                    </div>
+                  </button>
+                )}
 
                 <a
                   href="https://wa.me/2348075329182"

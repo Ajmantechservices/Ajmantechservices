@@ -1519,15 +1519,25 @@ export const AdminDashboardView: React.FC = () => {
                 </p>
               </div>
 
-              {pendingOrdersCount > 0 && (
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                 <button
-                  onClick={handleBatchApproveOrders}
-                  className="py-2.5 px-4 rounded-xl bg-[#16a34a] hover:bg-[#15803d] text-white font-bold text-xs shadow-sm flex items-center gap-2 cursor-pointer transition-all shrink-0"
+                  type="button"
+                  onClick={() => navigateTo('track-order')}
+                  className="py-2.5 px-4 rounded-xl bg-[#0047AB] hover:bg-[#002D72] text-white font-bold text-xs shadow-sm flex items-center gap-2 cursor-pointer transition-all"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Approve All Pending ({pendingOrdersCount})</span>
+                  <Search className="w-4 h-4" />
+                  <span>Admin Order Lookup & Tracker</span>
                 </button>
-              )}
+                {pendingOrdersCount > 0 && (
+                  <button
+                    onClick={handleBatchApproveOrders}
+                    className="py-2.5 px-4 rounded-xl bg-[#16a34a] hover:bg-[#15803d] text-white font-bold text-xs shadow-sm flex items-center gap-2 cursor-pointer transition-all"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Approve All Pending ({pendingOrdersCount})</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Filter Tabs & Search */}

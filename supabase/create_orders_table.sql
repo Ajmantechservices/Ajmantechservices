@@ -38,13 +38,24 @@ DROP POLICY IF EXISTS "Allow all modifications on orders" ON public.orders;
 DROP POLICY IF EXISTS "Orders: own or admin select" ON public.orders;
 CREATE POLICY "Orders: own or admin select"
   ON public.orders FOR SELECT
-  USING (auth.uid() = user_id OR coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin');
+  USING (
+    auth.uid() = user_id
+    OR coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    )
+  );
 
 DROP POLICY IF EXISTS "Orders: authenticated own or guest insert" ON public.orders;
 CREATE POLICY "Orders: authenticated own or guest insert"
   ON public.orders FOR INSERT
   WITH CHECK (
-    coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin'
+    coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    )
     OR (auth.uid() IS NOT NULL AND user_id = auth.uid())
     OR (auth.uid() IS NULL AND user_id IS NULL)
   );
@@ -52,10 +63,28 @@ CREATE POLICY "Orders: authenticated own or guest insert"
 DROP POLICY IF EXISTS "Orders: admin update" ON public.orders;
 CREATE POLICY "Orders: admin update"
   ON public.orders FOR UPDATE
-  USING (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin')
-  WITH CHECK (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin');
+  USING (
+    coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    )
+  )
+  WITH CHECK (
+    coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    )
+  );
 
 DROP POLICY IF EXISTS "Orders: admin delete" ON public.orders;
 CREATE POLICY "Orders: admin delete"
   ON public.orders FOR DELETE
-  USING (coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'admin');
+  USING (
+    coalesce((auth.jwt() -> 'app_metadata' ->> 'role'), '') IN ('admin', 'administrator')
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND lower(coalesce(p.role::text, '')) IN ('admin', 'administrator')
+    )
+  );

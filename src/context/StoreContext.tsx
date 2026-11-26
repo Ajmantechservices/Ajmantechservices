@@ -57,6 +57,7 @@ import {
   updateSupabaseProduct,
   fetchCustomerOrders,
   fetchAllOrdersForAdmin,
+  searchOrdersForAdmin,
   insertOrderInSupabase,
   updateOrderInSupabase,
   trackOrderSecureInSupabase,
@@ -179,6 +180,7 @@ interface StoreContextType {
   updateOrderPaymentStatus: (orderId: string, paymentStatus: 'pending' | 'paid' | 'verified', paymentReference?: string, paymentChannel?: string) => void;
   getOrderByIdOrNumber: (identifier: string) => Order | undefined;
   trackOrderSecure: (orderNumber: string, emailOrRef: string) => Promise<Order | null>;
+  searchAdminOrders: (query: string) => Promise<Order[]>;
 
   // Services
   serviceRequests: ServiceRequest[];
@@ -243,6 +245,8 @@ interface StoreContextType {
   formatNaira: (amount: number) => string;
   toast: Toast | null;
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
+  accessDeniedMessage: string | null;
+  clearAccessDeniedMessage: () => void;
   openWhatsApp: (messageText?: string) => void;
 }
 
@@ -475,8 +479,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [serviceModalDefaultType, setServiceModalDefaultType] = useState<string | undefined>(undefined);
   const [activeOrderForSuccess, setActiveOrderForSuccess] = useState<Order | null>(null);
 
-  // Toast
+  // Toast & Access Denied Alert Banner
   const [toast, setToast] = useState<Toast | null>(null);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
+  const clearAccessDeniedMessage = () => setAccessDeniedMessage(null);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = Date.now().toString();
@@ -922,31 +928,44 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   }, []);
 
   // Strict Route Access Control Enforcement
-  const ADMIN_PROTECTED_VIEWS: ViewState[] = ['admin', 'admin-login', 'admin-signup', 'admin-dashboard', 'admin-products'];
+  const ADMIN_PROTECTED_VIEWS: ViewState[] = [
+    'admin',
+    'admin-login',
+    'admin-signup',
+    'admin-dashboard',
+    'admin-products',
+    'track-order',
+  ];
 
   useEffect(() => {
     if (isAuthChecking) return;
 
-    // 1. Logged-in Customer attempting to visit ANY admin route -> redirect immediately to Customer Dashboard
+    // 1. Logged-in Customer attempting to visit ANY admin route (including /track) -> redirect immediately to Customer Dashboard
     if (currentUser && !isAdmin && ADMIN_PROTECTED_VIEWS.includes(currentView)) {
+      const deniedMsg =
+        currentView === 'track-order'
+          ? 'Access Denied: The administrator order lookup & tracking portal is restricted to administrators. You can track your own orders below.'
+          : 'Access Denied: Customers cannot access administrator portals.';
+      setAccessDeniedMessage(deniedMsg);
       setCurrentView('account');
       if (typeof window !== 'undefined' && window.history) {
         try {
           window.history.replaceState({ view: 'account' }, '', '/account');
         } catch {}
       }
-      showToast('Access Denied: Customers cannot access administrator portals.', 'error');
+      showToast(deniedMsg, 'error');
       return;
     }
 
-    // 2. Unauthenticated visitor attempting to access Admin Dashboard or Products -> redirect to Admin Login
-    if (!currentUser && (currentView === 'admin-dashboard' || currentView === 'admin-products')) {
+    // 2. Unauthenticated visitor attempting to access Admin Dashboard, Products, or Admin Order Tracker -> redirect to Admin Login
+    if (!currentUser && (currentView === 'admin-dashboard' || currentView === 'admin-products' || currentView === 'track-order')) {
       setCurrentView('admin-login');
       if (typeof window !== 'undefined' && window.history) {
         try {
           window.history.replaceState({ view: 'admin-login' }, '', '/admin');
         } catch {}
       }
+      showToast('Administrator sign-in is required to access that portal.', 'info');
       return;
     }
 
@@ -980,9 +999,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // Route guard check prior to navigation
     if (!isAuthChecking) {
       if (currentUser && !isAdmin && ADMIN_PROTECTED_VIEWS.includes(view)) {
-        showToast('Access Denied: Administrator portal is restricted.', 'error');
+        const deniedMsg =
+          view === 'track-order'
+            ? 'Access Denied: The administrator order lookup & tracking portal is restricted to administrators. You can view your own orders below.'
+            : 'Access Denied: Administrator portal is restricted.';
+        setAccessDeniedMessage(deniedMsg);
+        showToast(deniedMsg, 'error');
         view = 'account';
-      } else if (!currentUser && (view === 'admin-dashboard' || view === 'admin-products')) {
+      } else if (!currentUser && (view === 'admin-dashboard' || view === 'admin-products' || view === 'track-order')) {
+        showToast('Administrator sign-in is required to access that page.', 'info');
         view = 'admin-login';
       } else if (!currentUser && view === 'wishlist') {
         showToast('Please sign in to access your wishlist.', 'info');
@@ -1625,20 +1650,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const trackOrderSecure = async (orderNumber: string, emailOrRef: string): Promise<Order | null> => {
+    // Admin-only order lookup across all orders
+    if (!isAdmin) return null;
+
     const cleanOrd = orderNumber.trim().toLowerCase();
     const cleanEmailOrRef = emailOrRef.trim().toLowerCase();
-    if (!cleanOrd || !cleanEmailOrRef) return null;
+    if (!cleanOrd && !cleanEmailOrRef) return null;
 
-    // 1. Check customer's already-loaded own orders
     const localMatch = orders.find(
       (o) =>
-        o.orderNumber.toLowerCase() === cleanOrd &&
-        (o.customer.email.toLowerCase() === cleanEmailOrRef ||
-          (o.paymentReference && o.paymentReference.toLowerCase() === cleanEmailOrRef))
+        (cleanOrd && o.orderNumber.toLowerCase() === cleanOrd) ||
+        (cleanEmailOrRef &&
+          (o.customer.email.toLowerCase() === cleanEmailOrRef ||
+            (o.paymentReference && o.paymentReference.toLowerCase() === cleanEmailOrRef)))
     );
     if (localMatch) return localMatch;
 
-    // 2. Call privacy-preserving SECURITY DEFINER RPC in Supabase
     if (isSupabaseConfigured() && supabase) {
       const { data, error } = await trackOrderSecureInSupabase(orderNumber, emailOrRef);
       if (!error && data) {
@@ -1647,6 +1674,40 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     return null;
+  };
+
+  const searchAdminOrders = async (query: string): Promise<Order[]> => {
+    if (!isAdmin) return [];
+    const clean = query.trim().toLowerCase();
+
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await searchOrdersForAdmin(query);
+      if (!error && Array.isArray(data)) {
+        const mapped = data.map(mapDbOrderRow);
+        if (!clean) {
+          setOrders(mapped);
+        }
+        return mapped;
+      }
+    }
+
+    if (!clean) return orders;
+    return orders.filter((o) => {
+      const num = (o.orderNumber || '').toLowerCase();
+      const id = (o.id || '').toLowerCase();
+      const ref = (o.paymentReference || '').toLowerCase();
+      const custName = (o.customer?.fullName || o.customerName || '').toLowerCase();
+      const custEmail = (o.customer?.email || o.customerEmail || '').toLowerCase();
+      const custPhone = (o.customer?.phone || o.customerPhone || '').toLowerCase();
+      return (
+        num.includes(clean) ||
+        id.includes(clean) ||
+        ref.includes(clean) ||
+        custName.includes(clean) ||
+        custEmail.includes(clean) ||
+        custPhone.includes(clean)
+      );
+    });
   };
 
   // Service Requests
@@ -1812,26 +1873,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const adminLogin = async (email: string, pass: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedTarget = TARGET_ADMIN_EMAIL.toLowerCase();
-
-    if (normalizedEmail !== normalizedTarget) {
-      setIsAdmin(false);
-      addActivityLog({
-        actionType: 'security',
-        title: 'Unauthorized Admin Login Attempt Blocked',
-        details: `Rejected access attempt with unauthorized email: ${email}`,
-        adminName: 'Restricted Visitor',
-        adminEmail: email,
-        severity: 'alert',
-      });
-      return {
-        success: false,
-        message: 'Unauthorized access: Only verified administrators can log into this dashboard.',
-        isPrivilegeDenied: true,
-      };
-    }
-
     const res = await signInAdminWithSupabase(email, pass);
 
     if (!res.success || !res.user) {
@@ -1848,16 +1889,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       });
       return {
         success: false,
-        message: res.message || 'Invalid credentials or missing admin privileges.',
+        message: res.message || 'Invalid credentials or missing administrator privileges in profiles.',
         isPrivilegeDenied: res.isPrivilegeDenied,
       };
     }
 
+    const sessionInfo = await getVerifiedCurrentSession();
     const adminUser: UserAccount = {
       id: res.user.id,
-      fullName: res.user.user_metadata?.full_name || 'Engr. Abiodun Ajayi',
-      email: res.user.email || TARGET_ADMIN_EMAIL,
-      phone: '+234 807 532 9182',
+      fullName: sessionInfo.profile?.fullName || res.user.user_metadata?.full_name || 'Administrator',
+      email: sessionInfo.profile?.email || res.user.email || email.trim(),
+      phone: sessionInfo.profile?.phone || '',
       role: 'admin',
       addresses: [],
       createdAt: res.user.created_at
@@ -1867,12 +1909,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     setIsAdmin(true);
     setCurrentUser(adminUser);
+    setAccessDeniedMessage(null);
     await loadAdminScopedData();
 
     addActivityLog({
       actionType: 'auth',
       title: 'Admin Login Successful',
-      details: 'Verified administrator signed into Control Center via Supabase Auth.',
+      details: 'Verified administrator signed into Control Center via Supabase Auth & profiles.role.',
       adminName: adminUser.fullName,
       adminEmail: adminUser.email,
       severity: 'success',
@@ -2624,6 +2667,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updateOrderPaymentStatus,
         getOrderByIdOrNumber,
         trackOrderSecure,
+        searchAdminOrders,
 
         serviceRequests,
         createServiceRequest,
@@ -2668,6 +2712,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         formatNaira,
         toast,
         showToast,
+        accessDeniedMessage,
+        clearAccessDeniedMessage,
         openWhatsApp,
       }}
     >

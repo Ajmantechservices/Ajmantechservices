@@ -69,9 +69,9 @@ export const OfficialReceiptModal: React.FC<OfficialReceiptModalProps> = ({
   };
 
   const handleCopyLink = () => {
-    const url = `${window.location.origin}/track?ref=${encodeURIComponent(order.orderNumber)}&token=${encodeURIComponent(order.id)}`;
+    const url = `${window.location.origin}/account?orderRef=${encodeURIComponent(order.orderNumber)}`;
     navigator.clipboard?.writeText(url);
-    showToast('Receipt verification link copied to clipboard!');
+    showToast('Customer order link copied to clipboard!');
   };
 
   return (
